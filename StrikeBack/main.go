@@ -2,12 +2,32 @@ package main
 
 import (
 	"fmt"
+	"math"
 	"os"
 )
 
 type Point struct {
 	X int
 	Y int
+}
+
+func (p *Point) MovePointTo(target *Point, distance int) {
+	current_dx := float64(p.X - target.X)
+	current_dy := float64(p.Y - target.Y)
+	current_h := math.Hypot(current_dx, current_dy)
+	target_h := float64(distance)
+	if current_h < target_h {
+		p.X = target.X
+		p.Y = target.Y
+		return
+	}
+
+	ratio := target_h / current_h
+	dx := current_dx * ratio
+	dy := current_dy * ratio
+
+	p.X -= int(dx)
+	p.Y -= int(dy)
 }
 
 type Pod struct {
@@ -55,7 +75,6 @@ func (j *Journey) IsComplet() bool {
 func main() {
 	journey := Journey{nil, nil, false}
 	for {
-		var targetX, targetY int
 		var speed string
 		// nextCheckpointX: x position of the next check point
 		// nextCheckpointY: y position of the next check point
@@ -63,14 +82,18 @@ func main() {
 		// nextCheckpointAngle: angle between your pod orientation and the direction of the next checkpoint
 		var x, y, nextCheckpointX, nextCheckpointY, nextCheckpointDist, nextCheckpointAngle int
 		fmt.Scan(&x, &y, &nextCheckpointX, &nextCheckpointY, &nextCheckpointDist, &nextCheckpointAngle)
-		currentTarget := journey.GetCurrentTarget(nextCheckpointX, nextCheckpointY)
-		fmt.Fprintf(os.Stderr, "Current target is :%d-%d\n", currentTarget.X, currentTarget.Y)
+		nextCheckpoint := journey.GetCurrentTarget(nextCheckpointX, nextCheckpointY)
+		fmt.Fprintf(os.Stderr, "Current checkpoint is :%d-%d\n", nextCheckpoint.X, nextCheckpoint.Y)
 		var opponentX, opponentY int
 		fmt.Scan(&opponentX, &opponentY)
 
-		//TODO Compute nearest target
-		targetX = nextCheckpointX
-		targetY = nextCheckpointY
+		podPos := Point{x, y}
+
+		target := *nextCheckpoint
+		target.MovePointTo(&podPos, 500)
+
+		fmt.Fprintf(os.Stderr, "Current checkpoint is :%d-%d\n", nextCheckpoint.X, nextCheckpoint.Y)
+		fmt.Fprintf(os.Stderr, "Current target is :%d-%d\n", target.X, target.Y)
 
 		if journey.IsComplet() {
 			//TODO improve
@@ -86,8 +109,8 @@ func main() {
 				speed = "5"
 			}
 		}
-		fmt.Printf("%d %d %s\n", targetX, targetY, speed)
+		fmt.Printf("%d %d %s\n", target.X, target.Y, speed)
 
-		journey.SetPreviousTarget(currentTarget)
+		journey.SetPreviousTarget(nextCheckpoint)
 	}
 }
