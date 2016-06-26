@@ -270,32 +270,32 @@ func (t *Team) DisplayOrders() {
 			ghosts := t.GetOrderedGhostByDistanceOf(t.Members[i].Pos)
 			order := false
 			for _, ghost := range ghosts {
-				nearestMember := t.GetNearestFreeMemberOf(ghost.Pos)
-				if nearestMember == &t.Members[i] {
-					dist := t.Members[i].Pos.GetDistanceTo(ghost.Pos)
-					fmt.Fprintf(os.Stderr, "%d target %s (dist:%f)\n", t.Members[i].Id, ghost, dist)
-					if dist > 1760 {
-						fmt.Printf("MOVE %s\n", ghost.Pos)
-						order = true
-						break
-					} else if dist < 900 && ghost.IsSeen {
-						if dist+400 > 900 {
-							fmt.Printf("MOVE %s\n", t.Members[i].Pos)
-						} else {
-							//Move out
-							targetPos := t.Members[i].Pos.GetPositionAwaysFrom(ghost.Pos, 900-(dist+400))
-							fmt.Printf("MOVE %s\n", targetPos)
-						}
-						order = true
-						break
-					} else if ghost.IsSeen {
-						fmt.Printf("BUST %d\n", ghost.Id)
-						order = true
-						break
+				//nearestMember := t.GetNearestFreeMemberOf(ghost.Pos)
+				//if nearestMember == &t.Members[i] {
+				dist := t.Members[i].Pos.GetDistanceTo(ghost.Pos)
+				fmt.Fprintf(os.Stderr, "%d target %s (dist:%f)\n", t.Members[i].Id, ghost, dist)
+				if dist > 1760 {
+					fmt.Printf("MOVE %s\n", ghost.Pos)
+					order = true
+					break
+				} else if dist < 900 && ghost.IsSeen {
+					if dist+400 > 900 {
+						fmt.Printf("MOVE %s\n", t.Members[i].Pos)
 					} else {
-						t.RemoveGhost(ghost.Id)
+						//Move out
+						targetPos := t.Members[i].Pos.GetPositionAwaysFrom(ghost.Pos, 900-(dist+400))
+						fmt.Printf("MOVE %s\n", targetPos)
 					}
+					order = true
+					break
+				} else if ghost.IsSeen {
+					fmt.Printf("BUST %d\n", ghost.Id)
+					order = true
+					break
+				} else {
+					t.RemoveGhost(ghost.Id)
 				}
+				//}
 			}
 			if !order {
 				if t.Members[i].Target == nil || t.Members[i].Target.GetDistanceTo(t.Members[i].Pos) < 100 {
@@ -316,34 +316,32 @@ func CreateTeam(size int, id int) *Team {
 	switch id {
 	case 0:
 		t = &Team{id, size, make([]Buster, size), Point{0, 0}, make([]Ghost, 0), make([]Buster, size), Checkpoints{}}
-		//TODO Loop ?
 		t.checkpoints.Push(&Point{1000, 8000})
-		t.checkpoints.Push(&Point{5000, 8000})
+		t.checkpoints.Push(&Point{15000, 0})
 		t.checkpoints.Push(&Point{9000, 8000})
-		t.checkpoints.Push(&Point{13000, 8000})
-		t.checkpoints.Push(&Point{15000, 6000})
-		t.checkpoints.Push(&Point{15000, 2000})
 		t.checkpoints.Push(&Point{3000, 8000})
-		t.checkpoints.Push(&Point{7000, 8000})
+		t.checkpoints.Push(&Point{15000, 2000})
 		t.checkpoints.Push(&Point{11000, 8000})
-		t.checkpoints.Push(&Point{15000, 8000})
+		t.checkpoints.Push(&Point{5000, 8000})
 		t.checkpoints.Push(&Point{15000, 4000})
-		t.checkpoints.Push(&Point{15000, 1})
+		t.checkpoints.Push(&Point{13000, 8000})
+		t.checkpoints.Push(&Point{7000, 8000})
+		t.checkpoints.Push(&Point{15000, 6000})
+		t.checkpoints.Push(&Point{15000, 8000})
 	case 1:
 		t = &Team{id, size, make([]Buster, size), Point{16000, 9000}, make([]Ghost, 0), make([]Buster, size), Checkpoints{}}
-		//TODO Loop ?
-		t.checkpoints.Push(&Point{15000, 1000})
-		t.checkpoints.Push(&Point{11000, 1000})
-		t.checkpoints.Push(&Point{7000, 1000})
-		t.checkpoints.Push(&Point{3000, 1000})
-		t.checkpoints.Push(&Point{1000, 2000})
-		t.checkpoints.Push(&Point{1000, 4000})
-		t.checkpoints.Push(&Point{1000, 6000})
+		t.checkpoints.Push(&Point{15000, 0})
 		t.checkpoints.Push(&Point{1000, 8000})
-		t.checkpoints.Push(&Point{13000, 1000})
-		t.checkpoints.Push(&Point{9000, 1000})
-		t.checkpoints.Push(&Point{5000, 1000})
-		t.checkpoints.Push(&Point{1000, 1})
+		t.checkpoints.Push(&Point{7000, 0})
+		t.checkpoints.Push(&Point{13000, 0})
+		t.checkpoints.Push(&Point{1000, 6000})
+		t.checkpoints.Push(&Point{5000, 0})
+		t.checkpoints.Push(&Point{11000, 0})
+		t.checkpoints.Push(&Point{1000, 4000})
+		t.checkpoints.Push(&Point{3000, 0})
+		t.checkpoints.Push(&Point{9000, 0})
+		t.checkpoints.Push(&Point{1000, 2000})
+		t.checkpoints.Push(&Point{1000, 0})
 	}
 	for index, _ := range t.Members {
 		memberIndex := index
