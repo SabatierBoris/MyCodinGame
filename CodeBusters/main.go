@@ -47,21 +47,26 @@ func (c *Checkpoints) Pop() *Point {
 }
 
 type Buster struct {
-	Id     int
-	Pos    Point
-	Value  int
-	State  int
-	Target *Point
+	Id      int
+	Pos     Point
+	Value   int
+	State   int
+	Target  *Point
+	Reload  int
+	Visible bool
 }
 
 func (b *Buster) Update(x, y, state, value int) {
 	b.Pos.Update(x, y)
 	b.State = state
 	b.Value = value
+	if b.Reload > 0 {
+		b.Reload--
+	}
 }
 
 func (b Buster) String() string {
-	return fmt.Sprintf("%d : %s - State:%d - Value:%d", b.Id, b.Pos, b.State, b.Value)
+	return fmt.Sprintf("%d : %s - State:%d - Value:%d - Reload:%d", b.Id, b.Pos, b.State, b.Value, b.Reload)
 }
 
 type Ghost struct {
@@ -128,7 +133,10 @@ func (t *Team) Update() {
 
 	for index, _ := range t.KnownGhosts {
 		t.KnownGhosts[index].IsSeen = false
+	}
 
+	for index, _ := range t.Opponents {
+		t.Opponents[index].Visible = false
 	}
 
 	for i := 0; i < entities; i++ {
@@ -149,7 +157,9 @@ func (t *Team) Update() {
 			}
 		} else { //Opponents
 			t.UpdateOpponent(entityId, x, y, state, value)
-			//TODO Remove knownGhost if value != -1
+			if value != -1 {
+				t.RemoveGhost(value)
+			}
 		}
 	}
 }
@@ -196,6 +206,8 @@ func (t *Team) UpdateOpponent(entityId, x, y, state, value int) {
 		index -= t.Size
 	}
 	t.Opponents[index].Update(x, y, state, value)
+	t.Opponents[index].Visible = true
+	fmt.Fprintf(os.Stderr, " Update opponent %d  : %s\n", index, t.Opponents[index])
 }
 
 func (t Team) GetOrderedGhostByDistanceOf(p Point) []*Ghost {
@@ -224,6 +236,15 @@ func (t Team) GetNearestFreeMemberOf(p Point) *Buster {
 	return nearestMember
 }
 
+func (t Team) GetReachableOpponent(b Buster) *Buster {
+	for index, _ := range t.Opponents {
+		if t.Opponents[index].Visible && t.Opponents[index].Pos.GetDistanceTo(b.Pos) < 1760 {
+			return &t.Opponents[index]
+		}
+	}
+	return nil
+}
+
 func (t *Team) DisplayOrders() {
 	for i := 0; i < t.Size; i++ {
 		if t.Members[i].State == 1 {
@@ -236,31 +257,39 @@ func (t *Team) DisplayOrders() {
 				fmt.Printf("RELEASE\n")
 			}
 		} else {
+			if t.Members[i].Reload == 0 { //Can shoot
+				nearestOpponent := t.GetReachableOpponent(t.Members[i])
+				if nearestOpponent != nil {
+					fmt.Printf("STUN %d\n", nearestOpponent.Id)
+					t.Members[i].Reload = 20
+					continue
+				}
+			}
+
 			//fmt.Fprintf(os.Stderr, "%d haven't a ghost\n", i)
 			ghosts := t.GetOrderedGhostByDistanceOf(t.Members[i].Pos)
 			order := false
-
 			for _, ghost := range ghosts {
 				nearestMember := t.GetNearestFreeMemberOf(ghost.Pos)
 				if nearestMember == &t.Members[i] {
 					dist := t.Members[i].Pos.GetDistanceTo(ghost.Pos)
 					fmt.Fprintf(os.Stderr, "%d target %s (dist:%f)\n", t.Members[i].Id, ghost, dist)
 					if dist > 1760 {
-						fmt.Printf("MOVE %s %d-%d\n", ghost.Pos, t.Members[i].Id, ghost.Id)
+						fmt.Printf("MOVE %s\n", ghost.Pos)
 						order = true
 						break
 					} else if dist < 900 && ghost.IsSeen {
 						if dist+400 > 900 {
-							fmt.Printf("MOVE %s %d-STAY\n", t.Members[i].Pos, t.Members[i].Id)
+							fmt.Printf("MOVE %s\n", t.Members[i].Pos)
 						} else {
 							//Move out
 							targetPos := t.Members[i].Pos.GetPositionAwaysFrom(ghost.Pos, 900-(dist+400))
-							fmt.Printf("MOVE %s %d-MOVEOUT\n", targetPos, t.Members[i].Id)
+							fmt.Printf("MOVE %s\n", targetPos)
 						}
 						order = true
 						break
 					} else if ghost.IsSeen {
-						fmt.Printf("BUST %d %d-BUST\n", ghost.Id, t.Members[i].Id)
+						fmt.Printf("BUST %d\n", ghost.Id)
 						order = true
 						break
 					} else {
@@ -287,8 +316,32 @@ func CreateTeam(size int, id int) *Team {
 	switch id {
 	case 0:
 		t = &Team{id, size, make([]Buster, size), Point{0, 0}, make([]Ghost, 0), make([]Buster, size), Checkpoints{}}
+		t.checkpoints.Push(&Point{1000, 8000})
+		t.checkpoints.Push(&Point{5000, 8000})
+		t.checkpoints.Push(&Point{9000, 8000})
+		t.checkpoints.Push(&Point{13000, 8000})
+		t.checkpoints.Push(&Point{15000, 6000})
+		t.checkpoints.Push(&Point{15000, 2000})
+		t.checkpoints.Push(&Point{3000, 8000})
+		t.checkpoints.Push(&Point{7000, 8000})
+		t.checkpoints.Push(&Point{11000, 8000})
+		t.checkpoints.Push(&Point{15000, 8000})
+		t.checkpoints.Push(&Point{15000, 4000})
+		t.checkpoints.Push(&Point{15000, 1})
 	case 1:
 		t = &Team{id, size, make([]Buster, size), Point{16000, 9000}, make([]Ghost, 0), make([]Buster, size), Checkpoints{}}
+		t.checkpoints.Push(&Point{15000, 1000})
+		t.checkpoints.Push(&Point{11000, 1000})
+		t.checkpoints.Push(&Point{7000, 1000})
+		t.checkpoints.Push(&Point{3000, 1000})
+		t.checkpoints.Push(&Point{1000, 2000})
+		t.checkpoints.Push(&Point{1000, 4000})
+		t.checkpoints.Push(&Point{1000, 6000})
+		t.checkpoints.Push(&Point{1000, 8000})
+		t.checkpoints.Push(&Point{13000, 1000})
+		t.checkpoints.Push(&Point{9000, 1000})
+		t.checkpoints.Push(&Point{5000, 1000})
+		t.checkpoints.Push(&Point{1000, 1})
 	}
 	for index, _ := range t.Members {
 		memberIndex := index
@@ -304,18 +357,6 @@ func CreateTeam(size int, id int) *Team {
 		}
 		t.Opponents[index].Id = memberIndex
 	}
-	t.checkpoints.Push(&Point{1000, 8000})
-	t.checkpoints.Push(&Point{5000, 8000})
-	t.checkpoints.Push(&Point{9000, 8000})
-	t.checkpoints.Push(&Point{13000, 8000})
-	t.checkpoints.Push(&Point{15000, 6000})
-	t.checkpoints.Push(&Point{15000, 2000})
-	t.checkpoints.Push(&Point{3000, 8000})
-	t.checkpoints.Push(&Point{7000, 8000})
-	t.checkpoints.Push(&Point{11000, 8000})
-	t.checkpoints.Push(&Point{15000, 8000})
-	t.checkpoints.Push(&Point{15000, 4000})
-	t.checkpoints.Push(&Point{15000, 1})
 	return t
 }
 
