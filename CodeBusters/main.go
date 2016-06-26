@@ -236,9 +236,9 @@ func (t Team) GetNearestFreeMemberOf(p Point) *Buster {
 	return nearestMember
 }
 
-func (t Team) GetReachableOpponent(b Buster) *Buster {
+func (t Team) GetStunableOpponent(b Buster) *Buster {
 	for index, _ := range t.Opponents {
-		if t.Opponents[index].Visible && t.Opponents[index].Pos.GetDistanceTo(b.Pos) < 1760 {
+		if t.Opponents[index].Visible && (t.Opponents[index].State != 2 || (t.Opponents[index].State == 2 && t.Opponents[index].Value < 5)) && t.Opponents[index].Pos.GetDistanceTo(b.Pos) < 1760 {
 			return &t.Opponents[index]
 		}
 	}
@@ -258,7 +258,7 @@ func (t *Team) DisplayOrders() {
 			}
 		} else {
 			if t.Members[i].Reload == 0 { //Can shoot
-				nearestOpponent := t.GetReachableOpponent(t.Members[i])
+				nearestOpponent := t.GetStunableOpponent(t.Members[i])
 				if nearestOpponent != nil {
 					fmt.Printf("STUN %d\n", nearestOpponent.Id)
 					t.Members[i].Reload = 20
@@ -316,6 +316,7 @@ func CreateTeam(size int, id int) *Team {
 	switch id {
 	case 0:
 		t = &Team{id, size, make([]Buster, size), Point{0, 0}, make([]Ghost, 0), make([]Buster, size), Checkpoints{}}
+		//TODO Loop ?
 		t.checkpoints.Push(&Point{1000, 8000})
 		t.checkpoints.Push(&Point{5000, 8000})
 		t.checkpoints.Push(&Point{9000, 8000})
@@ -330,6 +331,7 @@ func CreateTeam(size int, id int) *Team {
 		t.checkpoints.Push(&Point{15000, 1})
 	case 1:
 		t = &Team{id, size, make([]Buster, size), Point{16000, 9000}, make([]Ghost, 0), make([]Buster, size), Checkpoints{}}
+		//TODO Loop ?
 		t.checkpoints.Push(&Point{15000, 1000})
 		t.checkpoints.Push(&Point{11000, 1000})
 		t.checkpoints.Push(&Point{7000, 1000})
