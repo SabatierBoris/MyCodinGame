@@ -238,7 +238,7 @@ func (t Team) GetNearestFreeMemberOf(p Point) *Buster {
 
 func (t Team) GetStunableOpponent(b Buster) *Buster {
 	for index, _ := range t.Opponents {
-		if t.Opponents[index].Visible && (t.Opponents[index].State != 2 || (t.Opponents[index].State == 2 && t.Opponents[index].Value < 5)) && t.Opponents[index].Pos.GetDistanceTo(b.Pos) < 1760 {
+		if t.Opponents[index].Visible && (t.Opponents[index].State != 2 || (t.Opponents[index].State == 2 && t.Opponents[index].Value < 2)) && t.Opponents[index].Pos.GetDistanceTo(b.Pos) < 1760 {
 			return &t.Opponents[index]
 		}
 	}
