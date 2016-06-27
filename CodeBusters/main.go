@@ -346,7 +346,10 @@ func (t *Team) DisplayOrders() {
 					order = true
 					break
 				} else if ghost.IsSeen {
-					//TODO If life of ghost is 0 and opponent BUST also this ghost And I can STUN, => STUN !!!!!!!!
+					//TODO If the ghost isn't target of enemy and life > 15, dont bust
+					//TODO If the ghost isn't target by anyone and life < 5 => BUST
+					//TODO If the ghost is target by ally and life > 5 => HELP TO BUST
+					//TODO If the ghost life < 5 and is target by enemy and I can gun is reloaded => MOVE to enemy for STUN
 					fmt.Printf("BUST %d\n", ghost.Id)
 					order = true
 					break
@@ -356,6 +359,7 @@ func (t *Team) DisplayOrders() {
 				//}
 			}
 			if !order {
+				//TODO I a see a enemy with a ghost "interseptible" (and my gun will be reload when I will be near enemy) => Move to enemy => But I'll need help
 				if t.Members[i].Target == nil {
 					t.Members[i].Target = t.checkpoints.Pop()
 				}
