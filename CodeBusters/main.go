@@ -8,6 +8,13 @@ import (
 )
 
 const (
+	Xsize        = 16000
+	Ysize        = 9000
+	ReleaseDist  = 1600
+	StunDist     = 1760
+	BustMaxDist  = 1760
+	BustMinDist  = 900
+	GhostSpeed   = 400
 	NbCheckpoint = 5
 )
 
@@ -73,14 +80,14 @@ type Checkpoints struct {
 }
 
 func (c *Checkpoints) Push(p *Path) {
-	fmt.Fprintf(os.Stderr, "Push path %s\n", p)
+	//fmt.Fprintf(os.Stderr, "Push path %s\n", p)
 	c.list = append(c.list, p)
 }
 
 func (c *Checkpoints) Pop() *Path {
 	p := c.list[0]
 	c.list = c.list[1:]
-	fmt.Fprintf(os.Stderr, "Pop path %s\n", p)
+	//fmt.Fprintf(os.Stderr, "Pop path %s\n", p)
 	return p
 }
 
@@ -276,7 +283,7 @@ func (t Team) GetNearestFreeMemberOf(p Point) *Buster {
 
 func (t Team) GetStunableOpponent(b Buster) *Buster {
 	for index, _ := range t.Opponents {
-		if t.Opponents[index].Visible && (t.Opponents[index].State != 2 || (t.Opponents[index].State == 2 && t.Opponents[index].Value < 2)) && t.Opponents[index].Pos.GetDistanceTo(b.Pos) < 1760 {
+		if t.Opponents[index].Visible && (t.Opponents[index].State != 2 || (t.Opponents[index].State == 2 && t.Opponents[index].Value < 2)) && t.Opponents[index].Pos.GetDistanceTo(b.Pos) < StunDist {
 			return &t.Opponents[index]
 		}
 	}
@@ -288,8 +295,18 @@ func (t *Team) DisplayOrders() {
 		if t.Members[i].State == 1 {
 			//If the members have a ghost
 			dist := t.Members[i].Pos.GetDistanceTo(t.Base)
-			fmt.Fprintf(os.Stderr, "%d have a ghost (Distance to %s : %f - %t)\n", i, t.Base, dist, (dist > 1600))
-			if dist > 1600 {
+			//fmt.Fprintf(os.Stderr, "%d have a ghost (Distance to %s : %f - %t)\n", i, t.Base, dist, (dist > ReleaseDist))
+			if dist > ReleaseDist {
+				if t.Members[i].Reload == 0 { //Can shoot
+					nearestOpponent := t.GetStunableOpponent(t.Members[i])
+					if nearestOpponent != nil {
+						fmt.Printf("STUN %d\n", nearestOpponent.Id)
+						t.Members[i].Reload = 20
+						nearestOpponent.Value = 10
+						nearestOpponent.State = 2
+						continue
+					}
+				}
 				fmt.Printf("MOVE %s\n", t.Base)
 			} else {
 				fmt.Printf("RELEASE\n")
@@ -314,16 +331,16 @@ func (t *Team) DisplayOrders() {
 				//if nearestMember == &t.Members[i] {
 				dist := t.Members[i].Pos.GetDistanceTo(ghost.Pos)
 				fmt.Fprintf(os.Stderr, "%d target %s (dist:%f)\n", t.Members[i].Id, ghost, dist)
-				if dist > 1760 {
+				if dist > BustMaxDist {
 					fmt.Printf("MOVE %s\n", ghost.Pos)
 					order = true
 					break
-				} else if dist < 900 && ghost.IsSeen {
-					if dist+400 > 900 {
+				} else if dist < BustMinDist && ghost.IsSeen {
+					if dist+GhostSpeed > BustMinDist {
 						fmt.Printf("MOVE %s\n", t.Members[i].Pos)
 					} else {
 						//Move out
-						targetPos := t.Members[i].Pos.GetPositionAwaysFrom(ghost.Pos, 900-(dist+400))
+						targetPos := t.Members[i].Pos.GetPositionAwaysFrom(ghost.Pos, BustMinDist-(dist+GhostSpeed))
 						fmt.Printf("MOVE %s\n", targetPos)
 					}
 					order = true
@@ -372,15 +389,15 @@ func CreateTeam(size int, id int) *Team {
 
 		for i := 0; i < NbCheckpoint; i++ {
 			p := &Path{0, make([]*Point, 0)}
-			p.Push(&Point{i * (16000 / NbCheckpoint), 8000 - i*(8000/NbCheckpoint)})
-			p.Push(&Point{15000, 8000})
+			p.Push(&Point{i * (Xsize / NbCheckpoint), Ysize - i*(Ysize/NbCheckpoint)})
+			p.Push(&Point{Xsize, Ysize})
 			t.checkpoints.Push(p)
 		}
 	case 1:
-		t = &Team{id, size, make([]Buster, size), Point{16000, 9000}, make([]Ghost, 0), make([]Buster, size), Checkpoints{}}
+		t = &Team{id, size, make([]Buster, size), Point{Xsize, Ysize}, make([]Ghost, 0), make([]Buster, size), Checkpoints{}}
 		for i := 0; i < NbCheckpoint; i++ {
 			p := &Path{0, make([]*Point, 0)}
-			p.Push(&Point{i * (16000 / NbCheckpoint), 8000 - i*(8000/NbCheckpoint)})
+			p.Push(&Point{i * (Xsize / NbCheckpoint), Ysize - i*(Ysize/NbCheckpoint)})
 			p.Push(&Point{0, 0})
 			t.checkpoints.Push(p)
 		}
