@@ -7,6 +7,10 @@ import (
 	"sort"
 )
 
+const (
+	NbCheckpoint = 5
+)
+
 type Point struct {
 	X int
 	Y int
@@ -32,17 +36,51 @@ func (p Point) GetPositionAwaysFrom(t Point, distance float64) Point {
 	return p
 }
 
-type Checkpoints struct {
-	list []*Point
+type Path struct {
+	currentIndex int
+	list         []*Point
 }
 
-func (c *Checkpoints) Push(p *Point) {
+func (p *Path) Push(pt *Point) {
+	p.list = append(p.list, pt)
+}
+
+func (p Path) GetCurrentPoint() *Point {
+	if p.currentIndex < len(p.list) {
+		return p.list[p.currentIndex]
+	}
+	return nil
+}
+
+func (p *Path) Next() {
+	p.currentIndex++
+}
+
+func (p *Path) Reset() {
+	p.currentIndex = 0
+}
+
+func (p Path) String() string {
+	s := fmt.Sprintf("Current : %d", p.currentIndex)
+	for i := 0; i < len(p.list); i++ {
+		s = fmt.Sprintf("%s - %s", s, p.list[i])
+	}
+	return s
+}
+
+type Checkpoints struct {
+	list []*Path
+}
+
+func (c *Checkpoints) Push(p *Path) {
+	fmt.Fprintf(os.Stderr, "Push path %s\n", p)
 	c.list = append(c.list, p)
 }
 
-func (c *Checkpoints) Pop() *Point {
+func (c *Checkpoints) Pop() *Path {
 	p := c.list[0]
 	c.list = c.list[1:]
+	fmt.Fprintf(os.Stderr, "Pop path %s\n", p)
 	return p
 }
 
@@ -51,7 +89,7 @@ type Buster struct {
 	Pos     Point
 	Value   int
 	State   int
-	Target  *Point
+	Target  *Path
 	Reload  int
 	Visible bool
 }
@@ -262,6 +300,8 @@ func (t *Team) DisplayOrders() {
 				if nearestOpponent != nil {
 					fmt.Printf("STUN %d\n", nearestOpponent.Id)
 					t.Members[i].Reload = 20
+					nearestOpponent.Value = 10
+					nearestOpponent.State = 2
 					continue
 				}
 			}
@@ -289,6 +329,7 @@ func (t *Team) DisplayOrders() {
 					order = true
 					break
 				} else if ghost.IsSeen {
+					//TODO If life of ghost is 0 and opponent BUST also this ghost And I can STUN, => STUN !!!!!!!!
 					fmt.Printf("BUST %d\n", ghost.Id)
 					order = true
 					break
@@ -298,13 +339,25 @@ func (t *Team) DisplayOrders() {
 				//}
 			}
 			if !order {
-				if t.Members[i].Target == nil || t.Members[i].Target.GetDistanceTo(t.Members[i].Pos) < 100 {
-					if t.Members[i].Target != nil {
-						t.checkpoints.Push(t.Members[i].Target)
-					}
+				if t.Members[i].Target == nil {
 					t.Members[i].Target = t.checkpoints.Pop()
 				}
-				fmt.Printf("MOVE %s\n", t.Members[i].Target)
+				var p *Point
+				p = nil
+				for p == nil {
+					p = t.Members[i].Target.GetCurrentPoint()
+					if p == nil {
+						t.Members[i].Target.Reset()
+						t.checkpoints.Push(t.Members[i].Target)
+						t.Members[i].Target = t.checkpoints.Pop()
+						p = t.Members[i].Target.GetCurrentPoint()
+					}
+					if p != nil && p.GetDistanceTo(t.Members[i].Pos) < 100 {
+						t.Members[i].Target.Next()
+						p = nil
+					}
+				}
+				fmt.Printf("MOVE %s\n", p)
 			}
 		}
 	}
@@ -316,32 +369,21 @@ func CreateTeam(size int, id int) *Team {
 	switch id {
 	case 0:
 		t = &Team{id, size, make([]Buster, size), Point{0, 0}, make([]Ghost, 0), make([]Buster, size), Checkpoints{}}
-		t.checkpoints.Push(&Point{1000, 8000})
-		t.checkpoints.Push(&Point{15000, 0})
-		t.checkpoints.Push(&Point{9000, 8000})
-		t.checkpoints.Push(&Point{3000, 8000})
-		t.checkpoints.Push(&Point{15000, 2000})
-		t.checkpoints.Push(&Point{11000, 8000})
-		t.checkpoints.Push(&Point{5000, 8000})
-		t.checkpoints.Push(&Point{15000, 4000})
-		t.checkpoints.Push(&Point{13000, 8000})
-		t.checkpoints.Push(&Point{7000, 8000})
-		t.checkpoints.Push(&Point{15000, 6000})
-		t.checkpoints.Push(&Point{15000, 8000})
+
+		for i := 0; i < NbCheckpoint; i++ {
+			p := &Path{0, make([]*Point, 0)}
+			p.Push(&Point{i * (16000 / NbCheckpoint), 8000 - i*(8000/NbCheckpoint)})
+			p.Push(&Point{15000, 8000})
+			t.checkpoints.Push(p)
+		}
 	case 1:
 		t = &Team{id, size, make([]Buster, size), Point{16000, 9000}, make([]Ghost, 0), make([]Buster, size), Checkpoints{}}
-		t.checkpoints.Push(&Point{15000, 0})
-		t.checkpoints.Push(&Point{1000, 8000})
-		t.checkpoints.Push(&Point{7000, 0})
-		t.checkpoints.Push(&Point{13000, 0})
-		t.checkpoints.Push(&Point{1000, 6000})
-		t.checkpoints.Push(&Point{5000, 0})
-		t.checkpoints.Push(&Point{11000, 0})
-		t.checkpoints.Push(&Point{1000, 4000})
-		t.checkpoints.Push(&Point{3000, 0})
-		t.checkpoints.Push(&Point{9000, 0})
-		t.checkpoints.Push(&Point{1000, 2000})
-		t.checkpoints.Push(&Point{1000, 0})
+		for i := 0; i < NbCheckpoint; i++ {
+			p := &Path{0, make([]*Point, 0)}
+			p.Push(&Point{i * (16000 / NbCheckpoint), 8000 - i*(8000/NbCheckpoint)})
+			p.Push(&Point{0, 0})
+			t.checkpoints.Push(p)
+		}
 	}
 	for index, _ := range t.Members {
 		memberIndex := index
