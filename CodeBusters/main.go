@@ -117,11 +117,12 @@ func (b Buster) String() string {
 type Ghost struct {
 	Id     int
 	Pos    Point
+	State  int
 	Value  int
 	IsSeen bool
 }
 
-func (g *Ghost) Update(x, y, value int, seen bool) {
+func (g *Ghost) Update(x, y, state, value int, seen bool) {
 	g.Pos.Update(x, y)
 	g.Value = value
 	g.IsSeen = seen
@@ -194,7 +195,7 @@ func (t *Team) Update() {
 		fmt.Scan(&entityId, &x, &y, &entityType, &state, &value)
 
 		if entityType == -1 { //GHOST
-			t.UpdateOrCreateGhost(entityId, x, y, value)
+			t.UpdateOrCreateGhost(entityId, x, y, state, value)
 		} else if entityType == t.TeamId { //My Team
 			t.UpdateMember(entityId, x, y, state, value)
 			if value != -1 {
@@ -219,18 +220,18 @@ func (t *Team) RemoveGhost(value int) {
 	}
 }
 
-func (t *Team) UpdateOrCreateGhost(entityId, x, y, value int) {
+func (t *Team) UpdateOrCreateGhost(entityId, x, y, state, value int) {
 	for index, ghost := range t.KnownGhosts {
 		if ghost.Id == entityId { //If ghost is already known
 			//Update it
-			t.KnownGhosts[index].Update(x, y, value, true)
+			t.KnownGhosts[index].Update(x, y, state, value, true)
 			//fmt.Fprintf(os.Stderr, "Update ghost %s\n", t.KnownGhosts[index])
 			return
 		}
 	}
 	//If ghost isn't found
 	//Create it
-	ghost := Ghost{entityId, Point{x, y}, value, true}
+	ghost := Ghost{entityId, Point{x, y}, state, value, true}
 	//fmt.Fprintf(os.Stderr, "Add new ghost %s\n", ghost)
 	t.KnownGhosts = append(t.KnownGhosts, ghost)
 
@@ -327,34 +328,36 @@ func (t *Team) DisplayOrders() {
 			ghosts := t.GetOrderedGhostByDistanceOf(t.Members[i].Pos)
 			order := false
 			for _, ghost := range ghosts {
-				//nearestMember := t.GetNearestFreeMemberOf(ghost.Pos)
-				//if nearestMember == &t.Members[i] {
-				dist := t.Members[i].Pos.GetDistanceTo(ghost.Pos)
-				fmt.Fprintf(os.Stderr, "%d target %s (dist:%f)\n", t.Members[i].Id, ghost, dist)
-				if dist > BustMaxDist {
-					fmt.Printf("MOVE %s\n", ghost.Pos)
-					order = true
-					break
-				} else if dist < BustMinDist && ghost.IsSeen {
-					if dist+GhostSpeed > BustMinDist {
-						fmt.Printf("MOVE %s\n", t.Members[i].Pos)
+				if ghost.State <= 15 {
+					//nearestMember := t.GetNearestFreeMemberOf(ghost.Pos)
+					//if nearestMember == &t.Members[i] {
+					dist := t.Members[i].Pos.GetDistanceTo(ghost.Pos)
+					fmt.Fprintf(os.Stderr, "%d target %s (dist:%f)\n", t.Members[i].Id, ghost, dist)
+					if dist > BustMaxDist {
+						fmt.Printf("MOVE %s\n", ghost.Pos)
+						order = true
+						break
+					} else if dist < BustMinDist && ghost.IsSeen {
+						if dist+GhostSpeed > BustMinDist {
+							fmt.Printf("MOVE %s\n", t.Members[i].Pos)
+						} else {
+							//Move out
+							targetPos := t.Members[i].Pos.GetPositionAwaysFrom(ghost.Pos, BustMinDist-(dist+GhostSpeed))
+							fmt.Printf("MOVE %s\n", targetPos)
+						}
+						order = true
+						break
+					} else if ghost.IsSeen {
+						//TODO If the ghost isn't target of enemy and life > 15, dont bust
+						//TODO If the ghost isn't target by anyone and life < 5 => BUST
+						//TODO If the ghost is target by ally and life > 5 => HELP TO BUST
+						//TODO If the ghost life < 5 and is target by enemy and I can gun is reloaded => MOVE to enemy for STUN
+						fmt.Printf("BUST %d\n", ghost.Id)
+						order = true
+						break
 					} else {
-						//Move out
-						targetPos := t.Members[i].Pos.GetPositionAwaysFrom(ghost.Pos, BustMinDist-(dist+GhostSpeed))
-						fmt.Printf("MOVE %s\n", targetPos)
+						t.RemoveGhost(ghost.Id)
 					}
-					order = true
-					break
-				} else if ghost.IsSeen {
-					//TODO If the ghost isn't target of enemy and life > 15, dont bust
-					//TODO If the ghost isn't target by anyone and life < 5 => BUST
-					//TODO If the ghost is target by ally and life > 5 => HELP TO BUST
-					//TODO If the ghost life < 5 and is target by enemy and I can gun is reloaded => MOVE to enemy for STUN
-					fmt.Printf("BUST %d\n", ghost.Id)
-					order = true
-					break
-				} else {
-					t.RemoveGhost(ghost.Id)
 				}
 				//}
 			}
