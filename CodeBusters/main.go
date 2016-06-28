@@ -328,38 +328,33 @@ func (t *Team) DisplayOrders() {
 			ghosts := t.GetOrderedGhostByDistanceOf(t.Members[i].Pos)
 			order := false
 			for _, ghost := range ghosts {
-				if ghost.State <= 15 {
-					//nearestMember := t.GetNearestFreeMemberOf(ghost.Pos)
-					//if nearestMember == &t.Members[i] {
-					dist := t.Members[i].Pos.GetDistanceTo(ghost.Pos)
-					fmt.Fprintf(os.Stderr, "%d target %s (dist:%f)\n", t.Members[i].Id, ghost, dist)
-					if dist > BustMaxDist {
-						fmt.Printf("MOVE %s\n", ghost.Pos)
-						order = true
-						break
-					} else if dist < BustMinDist && ghost.IsSeen {
-						if dist+GhostSpeed > BustMinDist {
-							fmt.Printf("MOVE %s\n", t.Members[i].Pos)
-						} else {
-							//Move out
-							targetPos := t.Members[i].Pos.GetPositionAwaysFrom(ghost.Pos, BustMinDist-(dist+GhostSpeed))
-							fmt.Printf("MOVE %s\n", targetPos)
+				//TODO If the ghost isn't target of enemy and life > 15, dont bust
+				//TODO If the ghost isn't target by anyone and life < 5 => BUST
+				//TODO If the ghost is target by ally and life > 5 => HELP TO BUST
+				//TODO If the ghost life < 5 and is target by enemy and I can gun is reloaded => MOVE to enemy for STUN
+				if ghost.State <= 3 {
+					if t.Members[i].Reload == 0 { //Can shoot
+						//Check if enemy near
+						nearestOpponent := t.GetStunableOpponent(t.Members[i])
+						if nearestOpponent != nil {
+							fmt.Printf("STUN %d\n", nearestOpponent.Id)
+							t.Members[i].Reload = 20
+							nearestOpponent.Value = 10
+							nearestOpponent.State = 2
+							order = true
+							break
 						}
+					}
+					if t.CaptureGhost(ghost, &t.Members[i]) {
 						order = true
 						break
-					} else if ghost.IsSeen {
-						//TODO If the ghost isn't target of enemy and life > 15, dont bust
-						//TODO If the ghost isn't target by anyone and life < 5 => BUST
-						//TODO If the ghost is target by ally and life > 5 => HELP TO BUST
-						//TODO If the ghost life < 5 and is target by enemy and I can gun is reloaded => MOVE to enemy for STUN
-						fmt.Printf("BUST %d\n", ghost.Id)
+					}
+				} else if ghost.State <= 15 { //Ignore ghost with live hight than 15
+					if t.CaptureGhost(ghost, &t.Members[i]) {
 						order = true
 						break
-					} else {
-						t.RemoveGhost(ghost.Id)
 					}
 				}
-				//}
 			}
 			if !order {
 				//TODO I a see a enemy with a ghost "interseptible" (and my gun will be reload when I will be near enemy) => Move to enemy => But I'll need help
@@ -385,6 +380,31 @@ func (t *Team) DisplayOrders() {
 			}
 		}
 	}
+}
+
+func (t *Team) CaptureGhost(ghost *Ghost, buster *Buster) bool {
+	dist := buster.Pos.GetDistanceTo(ghost.Pos)
+	fmt.Fprintf(os.Stderr, "%d target %s (dist:%f)\n", buster.Id, ghost, dist)
+	if dist > BustMaxDist {
+		fmt.Printf("MOVE %s\n", ghost.Pos)
+		return true
+	} else if dist < BustMinDist && ghost.IsSeen {
+		//Move out
+		if dist+GhostSpeed > BustMinDist {
+			fmt.Printf("MOVE %s\n", buster.Pos)
+		} else {
+			targetPos := buster.Pos.GetPositionAwaysFrom(ghost.Pos, BustMinDist-(dist+GhostSpeed))
+			fmt.Printf("MOVE %s\n", targetPos)
+		}
+		return true
+	} else if ghost.IsSeen {
+		fmt.Printf("BUST %d\n", ghost.Id)
+		return true
+	} else {
+		t.RemoveGhost(ghost.Id)
+		return false
+	}
+	return false
 }
 
 func CreateTeam(size int, id int) *Team {
