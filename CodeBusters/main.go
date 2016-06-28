@@ -8,6 +8,8 @@ import (
 )
 
 const (
+	XShift       = 700
+	YShift       = 700
 	Xsize        = 16000
 	Ysize        = 9000
 	ReleaseDist  = 1600
@@ -15,7 +17,9 @@ const (
 	BustMaxDist  = 1760
 	BustMinDist  = 900
 	GhostSpeed   = 400
-	NbCheckpoint = 5
+	BusterSpeed  = 800
+	NbCheckpoint = 6
+	NbShift      = 3
 )
 
 type Point struct {
@@ -92,13 +96,26 @@ func (c *Checkpoints) Pop() *Path {
 }
 
 type Buster struct {
-	Id      int
-	Pos     Point
-	Value   int
-	State   int
-	Target  *Path
-	Reload  int
-	Visible bool
+	Id        int
+	Pos       Point
+	Value     int
+	State     int
+	Target    *Path
+	Reload    int
+	Visible   bool
+	weakGhost bool
+}
+
+func (b *Buster) SeeWeakGhost() {
+	b.weakGhost = true
+}
+
+func (b *Buster) ChangePath() {
+	b.weakGhost = false
+}
+
+func (b Buster) HasSeeWeakGhost() bool {
+	return b.weakGhost
 }
 
 func (b *Buster) Update(x, y, state, value int) {
@@ -130,9 +147,9 @@ func (g *Ghost) Update(x, y, state, value int, seen bool) {
 
 func (g Ghost) String() string {
 	if g.IsSeen {
-		return fmt.Sprintf("%d at %s (%s)", g.Id, g.Pos, "Visible")
+		return fmt.Sprintf("%d at %s (%s) State : %d Value : %d", g.Id, g.Pos, "Visible", g.State, g.Value)
 	} else {
-		return fmt.Sprintf("%d at %s (%s)", g.Id, g.Pos, "Hidden")
+		return fmt.Sprintf("%d at %s (%s) State : %d Value : %d", g.Id, g.Pos, "Hidden", g.State, g.Value)
 	}
 
 }
@@ -198,14 +215,14 @@ func (t *Team) Update() {
 			t.UpdateOrCreateGhost(entityId, x, y, state, value)
 		} else if entityType == t.TeamId { //My Team
 			t.UpdateMember(entityId, x, y, state, value)
-			if value != -1 {
-				t.RemoveGhost(value)
-			}
+			//if value != -1 {
+			//	t.RemoveGhost(value)
+			//}
 		} else { //Opponents
 			t.UpdateOpponent(entityId, x, y, state, value)
-			if value != -1 {
-				t.RemoveGhost(value)
-			}
+			//if value != -1 {
+			//	t.RemoveGhost(value)
+			//}
 		}
 	}
 }
@@ -213,7 +230,7 @@ func (t *Team) Update() {
 func (t *Team) RemoveGhost(value int) {
 	for index, ghost := range t.KnownGhosts {
 		if ghost.Id == value {
-			fmt.Fprintf(os.Stderr, "Delete ghost %s\n", ghost)
+			//fmt.Fprintf(os.Stderr, "Delete ghost %s\n", ghost)
 			t.KnownGhosts = append(t.KnownGhosts[:index], t.KnownGhosts[index+1:]...)
 			return
 		}
@@ -225,14 +242,14 @@ func (t *Team) UpdateOrCreateGhost(entityId, x, y, state, value int) {
 		if ghost.Id == entityId { //If ghost is already known
 			//Update it
 			t.KnownGhosts[index].Update(x, y, state, value, true)
-			//fmt.Fprintf(os.Stderr, "Update ghost %s\n", t.KnownGhosts[index])
+			fmt.Fprintf(os.Stderr, "Update ghost %s\n", t.KnownGhosts[index])
 			return
 		}
 	}
 	//If ghost isn't found
 	//Create it
 	ghost := Ghost{entityId, Point{x, y}, state, value, true}
-	//fmt.Fprintf(os.Stderr, "Add new ghost %s\n", ghost)
+	fmt.Fprintf(os.Stderr, "Add new ghost %s\n", ghost)
 	t.KnownGhosts = append(t.KnownGhosts, ghost)
 
 }
@@ -243,7 +260,7 @@ func (t *Team) UpdateMember(entityId, x, y, state, value int) {
 		index -= t.Size
 	}
 	t.Members[index].Update(x, y, state, value)
-	//fmt.Fprintf(os.Stderr, " Update member %d  : %s\n", index, t.Members[index])
+	fmt.Fprintf(os.Stderr, " Update member %d  : %s\n", index, t.Members[index])
 }
 
 func (t *Team) UpdateOpponent(entityId, x, y, state, value int) {
@@ -271,7 +288,7 @@ func (t Team) GetNearestFreeMemberOf(p Point) *Buster {
 	var nearestDist float64
 	nearestMember = nil
 	for index, member := range t.Members {
-		if member.State == 0 {
+		if member.State == 0 || member.State == 3 {
 			dist := member.Pos.GetDistanceTo(p)
 			if nearestMember == nil || dist < nearestDist {
 				nearestMember = &t.Members[index]
@@ -282,13 +299,52 @@ func (t Team) GetNearestFreeMemberOf(p Point) *Buster {
 	return nearestMember
 }
 
-func (t Team) GetStunableOpponent(b Buster) *Buster {
+func (t Team) GetStunableOpponent(b Buster, max_move int) (*Buster, float64) {
+	var nearest *Buster
+	var min_dist float64
+	nearest = nil
 	for index, _ := range t.Opponents {
-		if t.Opponents[index].Visible && (t.Opponents[index].State != 2 || (t.Opponents[index].State == 2 && t.Opponents[index].Value < 2)) && t.Opponents[index].Pos.GetDistanceTo(b.Pos) < StunDist {
-			return &t.Opponents[index]
+		if t.Opponents[index].Visible && (t.Opponents[index].State != 2 || (t.Opponents[index].State == 2 && t.Opponents[index].Value < 2)) {
+			dist := t.Opponents[index].Pos.GetDistanceTo(b.Pos)
+			if dist < (float64)(StunDist+max_move) && (nearest == nil || min_dist > dist) {
+				min_dist = dist
+				nearest = &t.Opponents[index]
+			}
 		}
 	}
-	return nil
+	return nearest, min_dist
+}
+
+func (t *Team) StunOpponent(b *Buster, max_move int) bool {
+	if b.Reload <= max_move/BusterSpeed { //Can shoot
+		nearestOpponent, dist := t.GetStunableOpponent(*b, max_move)
+		if nearestOpponent != nil {
+			if dist < StunDist && b.Reload == 0 {
+				fmt.Printf("STUN %d\n", nearestOpponent.Id)
+				b.Reload = 20
+				nearestOpponent.Value = 10
+				nearestOpponent.State = 2
+				return true
+			}
+			//fmt.Fprintf(os.Stderr, "MOVE 1\n")
+			fmt.Printf("MOVE %s\n", nearestOpponent.Pos)
+			return true
+		}
+	}
+	return false
+}
+
+func (t Team) HaveNbFriendInArea(p Point, max_dist float64, nb int) bool {
+	cpt := 0
+	for _, member := range t.Members {
+		if member.Pos.GetDistanceTo(p) < max_dist {
+			cpt++
+			if cpt >= nb {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 func (t *Team) DisplayOrders() {
@@ -298,30 +354,17 @@ func (t *Team) DisplayOrders() {
 			dist := t.Members[i].Pos.GetDistanceTo(t.Base)
 			//fmt.Fprintf(os.Stderr, "%d have a ghost (Distance to %s : %f - %t)\n", i, t.Base, dist, (dist > ReleaseDist))
 			if dist > ReleaseDist {
-				if t.Members[i].Reload == 0 { //Can shoot
-					nearestOpponent := t.GetStunableOpponent(t.Members[i])
-					if nearestOpponent != nil {
-						fmt.Printf("STUN %d\n", nearestOpponent.Id)
-						t.Members[i].Reload = 20
-						nearestOpponent.Value = 10
-						nearestOpponent.State = 2
-						continue
-					}
+				if t.StunOpponent(&t.Members[i], 0) {
+					continue
 				}
+				//fmt.Fprintf(os.Stderr, "MOVE 2\n")
 				fmt.Printf("MOVE %s\n", t.Base)
 			} else {
 				fmt.Printf("RELEASE\n")
 			}
 		} else {
-			if t.Members[i].Reload == 0 { //Can shoot
-				nearestOpponent := t.GetStunableOpponent(t.Members[i])
-				if nearestOpponent != nil {
-					fmt.Printf("STUN %d\n", nearestOpponent.Id)
-					t.Members[i].Reload = 20
-					nearestOpponent.Value = 10
-					nearestOpponent.State = 2
-					continue
-				}
+			if t.StunOpponent(&t.Members[i], 0) {
+				continue
 			}
 
 			//fmt.Fprintf(os.Stderr, "%d haven't a ghost\n", i)
@@ -332,24 +375,46 @@ func (t *Team) DisplayOrders() {
 				//TODO If the ghost isn't target by anyone and life < 5 => BUST
 				//TODO If the ghost is target by ally and life > 5 => HELP TO BUST
 				//TODO If the ghost life < 5 and is target by enemy and I can gun is reloaded => MOVE to enemy for STUN
-				if ghost.State <= 3 {
-					if t.Members[i].Reload == 0 { //Can shoot
-						//Check if enemy near
-						nearestOpponent := t.GetStunableOpponent(t.Members[i])
-						if nearestOpponent != nil {
-							fmt.Printf("STUN %d\n", nearestOpponent.Id)
-							t.Members[i].Reload = 20
-							nearestOpponent.Value = 10
-							nearestOpponent.State = 2
+				if ghost.State <= 5 {
+					//fmt.Fprintf(os.Stderr, "%d target %s\n", t.Members[i].Id, ghosts)
+					if t.StunOpponent(&t.Members[i], 0) {
+						order = true
+						break
+					}
+					if ghost.Value <= 1 {
+						nearestMember := t.GetNearestFreeMemberOf(ghost.Pos)
+						//fmt.Fprintf(os.Stderr, "Nearest members : %s\n", nearestMember)
+						if nearestMember == &t.Members[i] {
+							if t.CaptureGhost(ghost, &t.Members[i]) {
+								t.Members[i].SeeWeakGhost()
+								t.RemoveGhost(ghost.Id) //TODO Mark as targeted instead of remove
+								order = true
+								break
+							}
+						}
+					} else {
+						fmt.Fprintf(os.Stderr, "Ghost %d is target by many buster (%d)\n", ghost.Id, ghost.Value)
+						if t.HaveNbFriendInArea(ghost.Pos, StunDist, ghost.Value) {
+							fmt.Fprintf(os.Stderr, "But it's only friends\n")
+							nearestMember := t.GetNearestFreeMemberOf(ghost.Pos)
+							if nearestMember == &t.Members[i] {
+								if t.CaptureGhost(ghost, &t.Members[i]) {
+									t.Members[i].SeeWeakGhost()
+									t.RemoveGhost(ghost.Id) //TODO Mark as targeted instead of remove
+									order = true
+									break
+								}
+							}
+						} else if t.StunOpponent(&t.Members[i], BusterSpeed) {
+							order = true
+							break
+						} else if t.CaptureGhost(ghost, &t.Members[i]) {
+							t.Members[i].SeeWeakGhost()
 							order = true
 							break
 						}
 					}
-					if t.CaptureGhost(ghost, &t.Members[i]) {
-						order = true
-						break
-					}
-				} else if ghost.State <= 15 { //Ignore ghost with live hight than 15
+				} else if ghost.State <= 15 || !t.Members[i].HasSeeWeakGhost() { //Ignore ghost with live hight than 15
 					if t.CaptureGhost(ghost, &t.Members[i]) {
 						order = true
 						break
@@ -366,6 +431,7 @@ func (t *Team) DisplayOrders() {
 				for p == nil {
 					p = t.Members[i].Target.GetCurrentPoint()
 					if p == nil {
+						t.Members[i].ChangePath()
 						t.Members[i].Target.Reset()
 						t.checkpoints.Push(t.Members[i].Target)
 						t.Members[i].Target = t.checkpoints.Pop()
@@ -376,7 +442,8 @@ func (t *Team) DisplayOrders() {
 						p = nil
 					}
 				}
-				fmt.Printf("MOVE %s\n", p)
+				//fmt.Fprintf(os.Stderr, "MOVE 3\n")
+				fmt.Printf("MOVE %s %d\n", p, t.Members[i].Id)
 			}
 		}
 	}
@@ -384,7 +451,7 @@ func (t *Team) DisplayOrders() {
 
 func (t *Team) CaptureGhost(ghost *Ghost, buster *Buster) bool {
 	dist := buster.Pos.GetDistanceTo(ghost.Pos)
-	fmt.Fprintf(os.Stderr, "%d target %s (dist:%f)\n", buster.Id, ghost, dist)
+	//fmt.Fprintf(os.Stderr, "%d target %s (dist:%f)\n", buster.Id, ghost, dist)
 	if dist > BustMaxDist {
 		fmt.Printf("MOVE %s\n", ghost.Pos)
 		return true
@@ -413,20 +480,26 @@ func CreateTeam(size int, id int) *Team {
 	switch id {
 	case 0:
 		t = &Team{id, size, make([]Buster, size), Point{0, 0}, make([]Ghost, 0), make([]Buster, size), Checkpoints{}}
-
-		for i := 0; i < NbCheckpoint; i++ {
-			p := &Path{0, make([]*Point, 0)}
-			p.Push(&Point{i * (Xsize / NbCheckpoint), Ysize - i*(Ysize/NbCheckpoint)})
-			p.Push(&Point{Xsize, Ysize})
-			t.checkpoints.Push(p)
+		for j := 0; j < NbShift; j++ {
+			for i := j; i < NbCheckpoint; i += NbShift {
+				p := &Path{0, make([]*Point, 0)}
+				p.Push(&Point{XShift + (i * ((Xsize - (2 * XShift)) / NbCheckpoint)), Ysize - (YShift + (i * ((Ysize - (2 * YShift)) / NbCheckpoint)))})
+				p.Push(&Point{Xsize - (2 * XShift), Ysize - (2 * YShift)})
+				p.Push(&Point{4 * XShift, 4 * YShift})
+				t.checkpoints.Push(p)
+			}
 		}
+
 	case 1:
 		t = &Team{id, size, make([]Buster, size), Point{Xsize, Ysize}, make([]Ghost, 0), make([]Buster, size), Checkpoints{}}
-		for i := 0; i < NbCheckpoint; i++ {
-			p := &Path{0, make([]*Point, 0)}
-			p.Push(&Point{i * (Xsize / NbCheckpoint), Ysize - i*(Ysize/NbCheckpoint)})
-			p.Push(&Point{0, 0})
-			t.checkpoints.Push(p)
+		for j := 0; j < NbShift; j++ {
+			for i := j; i < NbCheckpoint; i += NbShift {
+				p := &Path{0, make([]*Point, 0)}
+				p.Push(&Point{XShift + (i * ((Xsize - (2 * XShift)) / NbCheckpoint)), Ysize - (YShift + (i * ((Ysize - (2 * YShift)) / NbCheckpoint)))})
+				p.Push(&Point{2 * XShift, 2 * YShift})
+				p.Push(&Point{Xsize - (4 * XShift), Ysize - (4 * YShift)})
+				t.checkpoints.Push(p)
+			}
 		}
 	}
 	for index, _ := range t.Members {
@@ -435,6 +508,7 @@ func CreateTeam(size int, id int) *Team {
 			memberIndex += t.Size
 		}
 		t.Members[index].Id = memberIndex
+		t.Members[index].SeeWeakGhost()
 	}
 	for index, _ := range t.Opponents {
 		memberIndex := index
