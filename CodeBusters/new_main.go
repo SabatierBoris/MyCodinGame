@@ -137,7 +137,7 @@ type Agent struct {
 	prepareOrder chan bool
 	pos          Point
 	paths        chan *Path
-	current_path *Path
+	currentPath  *Path
 	reload       int
 }
 
@@ -172,20 +172,20 @@ func (a *Agent) Run(terminated *sync.WaitGroup) {
 			var p *Point
 			p = nil
 			for p == nil {
-				if a.current_path == nil {
+				if a.currentPath == nil {
 					fmt.Fprintf(os.Stderr, "Agent %d get a new path\n", a.Id)
-					a.current_path = <-a.paths
-					a.current_path.Reset()
-					fmt.Fprintf(os.Stderr, "Agent %d path %s\n", a.Id, a.current_path)
+					a.currentPath = <-a.paths
+					a.currentPath.Reset()
+					fmt.Fprintf(os.Stderr, "Agent %d path %s\n", a.Id, a.currentPath)
 				}
-				p = a.current_path.GetCurrentPoint()
+				p = a.currentPath.GetCurrentPoint()
 				if p == nil {
-					a.current_path.Reset()
-					a.paths <- a.current_path
-					a.current_path = nil
+					a.currentPath.Reset()
+					a.paths <- a.currentPath
+					a.currentPath = nil
 				}
 				if p != nil && p.GetDistanceTo(a.pos) < 100 {
-					a.current_path.Next()
+					a.currentPath.Next()
 					p = nil
 				}
 			}
