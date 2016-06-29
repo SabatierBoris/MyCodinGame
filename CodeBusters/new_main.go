@@ -8,7 +8,7 @@ import (
 )
 
 const (
-	NbTurn       = 400
+	NbTurn       = 200
 	XShift       = 700
 	YShift       = 700
 	Xsize        = 16000
@@ -96,7 +96,11 @@ func (a *Agent) Run(terminated *sync.WaitGroup) {
 			//TODO If I don't have order already
 			//TODO Help someone
 			//TODO Move somewhere if no one need help
-			a.order <- fmt.Sprintf("MOVE 8000 4500 %d", a.Id)
+			if a.teamId == 0 {
+				a.order <- fmt.Sprintf("MOVE %s %d", Bases[1], a.Id)
+			} else {
+				a.order <- fmt.Sprintf("MOVE %s %d", Bases[0], a.Id)
+			}
 		}
 	}
 }
