@@ -137,8 +137,6 @@ type Ghost struct {
 	Value int
 }
 
-//TODO
-
 //=============================================================================
 //= Ghosts ====================================================================
 //=============================================================================
@@ -172,10 +170,42 @@ func (slice Ghosts) Swap(i, j int) {
 //= Opponent ==================================================================
 //=============================================================================
 type Opponent struct {
-	pos Point
+	Id    int
+	Pos   Point
+	State int
+	Value int
 }
 
 //TODO
+
+//=============================================================================
+//= Opponents =================================================================
+//=============================================================================
+
+type Opponents struct {
+	List   []*Opponent
+	Target Point
+}
+
+func (slice Opponents) Len() int {
+	return len(slice.List)
+}
+
+func (slice Opponents) String() string {
+	ret := fmt.Sprintf("Target : %s\n", slice.Target)
+	for _, opponent := range slice.List {
+		ret = fmt.Sprintf("%s : %s\n", ret, opponent)
+	}
+	return ret
+}
+
+func (slice Opponents) Less(i, j int) bool {
+	return slice.List[i].Pos.GetDistanceTo(slice.Target) < slice.List[j].Pos.GetDistanceTo(slice.Target)
+}
+
+func (slice Opponents) Swap(i, j int) {
+	slice.List[i], slice.List[j] = slice.List[j], slice.List[i]
+}
 
 //=============================================================================
 //= AGENT =====================================================================
@@ -199,6 +229,8 @@ type Agent struct {
 	datas        []InputLine
 	ghosts       []Ghost
 	opponents    []Opponent
+	friends      []*Agent
+	lastBust     int
 }
 
 func (a *Agent) Run(terminated *sync.WaitGroup) {
@@ -239,7 +271,11 @@ func (a *Agent) Run(terminated *sync.WaitGroup) {
 						}
 					} else if data.EntityType != a.teamId {
 						//Opponent
-						//TODO
+						p := Point{data.X, data.Y}
+						if p.GetDistanceTo(a.pos) <= FogDistance {
+							fmt.Fprintf(os.Stderr, "Opponent near %d\n", a.Id)
+							a.opponents = append(a.opponents, Opponent{data.EntityId, p, data.State, data.Value})
+						}
 					} else {
 						//Friend
 						//TODO
@@ -247,9 +283,19 @@ func (a *Agent) Run(terminated *sync.WaitGroup) {
 				}
 			}
 
-			if a.orderSet == false {
+			if a.orderSet == false && a.reload == 0 {
 				//If I can shoot and enemy is near and enemy isn't stun
-				//TODO
+				sortedOpponents := Opponents{make([]*Opponent, len(a.opponents)), a.pos}
+				for index, _ := range a.opponents {
+					sortedOpponents.List[index] = &a.opponents[index]
+				}
+				sort.Sort(sortedOpponents)
+				for _, opponent := range sortedOpponents.List {
+					if opponent.State != 2 || opponent.Value <= 2 {
+						a.AttackOpponent(*opponent)
+						break
+					}
+				}
 			}
 
 			if a.orderSet == false {
@@ -270,18 +316,28 @@ func (a *Agent) Run(terminated *sync.WaitGroup) {
 				for _, ghost := range sortedGhosts.List {
 					if ghost.State <= WeakGhost {
 						//Weak ghost
-						a.AttackGhost(*ghost)
+						if a.AttackGhost(*ghost) {
+							a.lastBust = 0
+						}
 						break
 						//Only one member if no opponent
 						//TODO
 						//If opponent => Ask help LEVEL 0 (Urgent)
 						//TODO
 					} else if ghost.State <= AverageGhost {
+						if a.AttackGhost(*ghost) {
+							a.lastBust = 0
+						}
+						break
 						//Average ghost two member if no opponent
 						//TODO
 						//If opponent => Ask help LEVEL 1
 						//TODO
 					} else {
+						if a.lastBust > 30 { //TODO Parametrable
+							a.AttackGhost(*ghost)
+							break
+						}
 						//Strong ghost, only when no other ghost found during sometime
 						// => Ask help for stun LEVEL 3 (Not urgent)
 						//TODO
@@ -335,6 +391,7 @@ func (a *Agent) Run(terminated *sync.WaitGroup) {
 			a.datas = []InputLine{}
 			a.ghosts = []Ghost{}
 			a.opponents = []Opponent{}
+			a.lastBust++
 		}
 	}
 }
@@ -351,7 +408,22 @@ func (a *Agent) GoHomeAndRelease() {
 	}
 }
 
-func (a *Agent) AttackGhost(g Ghost) {
+func (a *Agent) AttackOpponent(o Opponent) bool {
+	dist := a.pos.GetDistanceTo(o.Pos)
+	if dist > StunDist {
+		a.order <- fmt.Sprintf("MOVE %s", o.Pos)
+		a.orderSet = true
+	} else {
+		a.order <- fmt.Sprintf("STUN %d", o.Id)
+		a.orderSet = true
+		a.reload = 20
+		//TODO Inform all Agent this opponent is stun
+		return true
+	}
+	return false
+}
+
+func (a *Agent) AttackGhost(g Ghost) bool {
 	dist := a.pos.GetDistanceTo(g.Pos)
 	//fmt.Fprintf(os.Stderr, "%d target %s (dist:%f)\n", buster.Id, ghost, dist)
 	if dist > BustMaxDist {
@@ -368,7 +440,10 @@ func (a *Agent) AttackGhost(g Ghost) {
 	} else {
 		a.order <- fmt.Sprintf("BUST %d", g.Id)
 		a.orderSet = true
+		//TODO Inform all Agent this ghost is bust (inc bust cpt)
+		return true
 	}
+	return false
 }
 
 func (a *Agent) Terminate() {
@@ -394,8 +469,12 @@ func (a *Agent) PrepareOrder() {
 	a.prepareOrder <- true
 }
 
+func (a *Agent) AddFriend(f *Agent) {
+	a.friends = append(a.friends, f)
+}
+
 func MakeAgent(index, teamId, teamSize, nbGhost int, paths chan *Path) *Agent {
-	agent := &Agent{index + (teamSize * teamId), teamId, make(chan bool), make(chan string, 1), make(chan InputLine), make(chan bool), make(chan bool), Point{0, 0}, paths, nil, 0, false, 0, 0, []InputLine{}, []Ghost{}, []Opponent{}}
+	agent := &Agent{index + (teamSize * teamId), teamId, make(chan bool), make(chan string, 1), make(chan InputLine), make(chan bool), make(chan bool), Point{0, 0}, paths, nil, 0, false, 0, 0, []InputLine{}, []Ghost{}, []Opponent{}, []*Agent{}, 0}
 	return agent
 }
 
@@ -439,6 +518,14 @@ func main() {
 		agent := MakeAgent(i, myTeamId, bustersPerPlayer, ghostCount, paths)
 		go agent.Run(&terminated)
 		agents = append(agents, agent)
+	}
+
+	for index_1, _ := range agents {
+		for index_2, _ := range agents {
+			if index_2 != index_1 {
+				agents[index_1].AddFriend(agents[index_2])
+			}
+		}
 	}
 
 	for current_turn := 0; current_turn < NbTurn; current_turn++ {
