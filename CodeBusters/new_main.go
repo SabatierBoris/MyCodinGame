@@ -48,17 +48,59 @@ func (p Point) GetPositionAwaysFrom(t Point, distance float64) Point {
 
 var Bases = []Point{Point{0, 0}, Point{Xsize, Ysize}}
 
-//TODO Define TEAM BASES
-
 //=============================================================================
 //= PATH ======================================================================
 //=============================================================================
-//TODO
+type Path struct {
+	currentIndex int
+	list         []*Point
+}
+
+func (p *Path) Push(pt *Point) {
+	p.list = append(p.list, pt)
+}
+
+func (p Path) GetCurrentPoint() *Point {
+	if p.currentIndex < len(p.list) {
+		return p.list[p.currentIndex]
+	}
+	return nil
+}
+
+func (p *Path) Next() {
+	p.currentIndex++
+}
+
+func (p *Path) Reset() {
+	p.currentIndex = 0
+}
+
+func (p Path) String() string {
+	s := fmt.Sprintf("Current : %d", p.currentIndex)
+	for i := 0; i < len(p.list); i++ {
+		s = fmt.Sprintf("%s - %s", s, p.list[i])
+	}
+	return s
+}
 
 //=============================================================================
 //= PATHS =====================================================================
 //=============================================================================
-//TODO
+type Paths struct {
+	list []*Path
+}
+
+func (ps *Paths) Push(p *Path) {
+	//fmt.Fprintf(os.Stderr, "Push path %s\n", p)
+	ps.list = append(ps.list, p)
+}
+
+func (ps *Paths) Pop() *Path {
+	p := ps.list[0]
+	ps.list = ps.list[1:]
+	//fmt.Fprintf(os.Stderr, "Pop path %s\n", p)
+	return p
+}
 
 //=============================================================================
 //= AGENT =====================================================================
