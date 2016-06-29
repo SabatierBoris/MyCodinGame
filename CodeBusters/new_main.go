@@ -2,18 +2,53 @@ package main
 
 import (
 	"fmt"
+	"math"
 	"os"
 	"sync"
 )
 
 const (
-	NB_TURN = 400
+	NbTurn       = 400
+	XShift       = 700
+	YShift       = 700
+	Xsize        = 16000
+	Ysize        = 9000
+	ReleaseDist  = 1600
+	StunDist     = 1760
+	BustMaxDist  = 1760
+	BustMinDist  = 900
+	GhostSpeed   = 400
+	BusterSpeed  = 800
+	NbCheckpoint = 6
+	NbShift      = 3
 )
 
 //=============================================================================
 //= POINT =====================================================================
 //=============================================================================
-//TODO
+type Point struct {
+	X int
+	Y int
+}
+
+func (p Point) String() string {
+	return fmt.Sprintf("%d %d", p.X, p.Y)
+}
+
+func (p Point) GetDistanceTo(t Point) float64 {
+	dx := (float64)(p.X - t.X)
+	dy := (float64)(p.Y - t.Y)
+	return math.Hypot(dx, dy)
+}
+
+func (p Point) GetPositionAwaysFrom(t Point, distance float64) Point {
+	//TODO
+	return p
+}
+
+var Bases = []Point{Point{0, 0}, Point{Xsize, Ysize}}
+
+//TODO Define TEAM BASES
 
 //=============================================================================
 //= PATH ======================================================================
@@ -61,7 +96,7 @@ func (a *Agent) Run(terminated *sync.WaitGroup) {
 			//TODO If I don't have order already
 			//TODO Help someone
 			//TODO Move somewhere if no one need help
-			a.order <- fmt.Sprintf("MOVE 0 0 %d", a.Id)
+			a.order <- fmt.Sprintf("MOVE 8000 4500 %d", a.Id)
 		}
 	}
 }
@@ -89,8 +124,8 @@ func (a *Agent) PrepareOrder() {
 	a.prepareOrder <- true
 }
 
-func MakeAgent(index, teamId, nbGhost int) *Agent {
-	agent := &Agent{index, teamId, make(chan bool), make(chan string), make(chan bool), make(chan bool), make(chan bool)}
+func MakeAgent(index, teamId, teamSize, nbGhost int) *Agent {
+	agent := &Agent{index + (teamSize * teamId), teamId, make(chan bool), make(chan string), make(chan bool), make(chan bool), make(chan bool)}
 	return agent
 }
 
@@ -111,12 +146,12 @@ func main() {
 
 	terminated.Add(bustersPerPlayer)
 	for i := 0; i < bustersPerPlayer; i++ {
-		agent := MakeAgent(i, myTeamId, ghostCount)
+		agent := MakeAgent(i, myTeamId, bustersPerPlayer, ghostCount)
 		go agent.Run(&terminated)
 		agents = append(agents, agent)
 	}
 
-	for current_turn := 0; current_turn < NB_TURN; current_turn++ {
+	for current_turn := 0; current_turn < NbTurn; current_turn++ {
 		fmt.Fprintf(os.Stderr, "Turn : %d\n", current_turn)
 		var entities int
 		fmt.Scan(&entities)
