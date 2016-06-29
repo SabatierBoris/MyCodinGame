@@ -140,6 +140,8 @@ type Agent struct {
 	currentPath  *Path
 	reload       int
 	orderSet     bool
+	state        int
+	value        int
 }
 
 func (a *Agent) Run(terminated *sync.WaitGroup) {
@@ -154,23 +156,30 @@ func (a *Agent) Run(terminated *sync.WaitGroup) {
 		case data := <-a.data:
 			if data.EntityType == a.teamId && data.EntityId == a.Id {
 				a.pos.X, a.pos.Y = data.X, data.Y
+				a.state = data.State
+				a.value = data.Value
 				break
 			}
-			fmt.Fprintf(os.Stderr, "Agent %d received : %s\n", a.Id, data)
+			//fmt.Fprintf(os.Stderr, "Agent %d received : %s\n", a.Id, data)
 			//TODO
 		case <-a.endDigest:
 			fmt.Fprintf(os.Stderr, "Agent %d End of digest\n", a.Id)
+			//If I'm STUNED
+			if a.state == 2 {
+				a.order <- fmt.Sprintf("MOVE %s STUNED", a.pos)
+				a.orderSet = true
+				break
+			}
 			//TODO PREPARE ORDER FOR ATTACK (STUN or BUST)
 			//TODO ASK HELP
 			//TODO Tell I can HELP
 		case <-a.prepareOrder:
-			fmt.Fprintf(os.Stderr, "Agent %d Prepare order\n", a.Id)
-			//TODO If I don't have order already
-			//TODO Help someone
-			//TODO Move somewhere if no one need help
-
-			//Don't have order yet, use paths
 			if a.orderSet == false {
+				//Don't have order yet, Help someone
+				//TODO
+			}
+			if a.orderSet == false {
+				//Don't have order yet, use paths
 				var p *Point
 				p = nil
 				for p == nil {
@@ -227,7 +236,7 @@ func (a *Agent) PrepareOrder() {
 }
 
 func MakeAgent(index, teamId, teamSize, nbGhost int, paths chan *Path) *Agent {
-	agent := &Agent{index + (teamSize * teamId), teamId, make(chan bool), make(chan string), make(chan InputLine), make(chan bool), make(chan bool), Point{0, 0}, paths, nil, 0, false}
+	agent := &Agent{index + (teamSize * teamId), teamId, make(chan bool), make(chan string, 1), make(chan InputLine), make(chan bool), make(chan bool), Point{0, 0}, paths, nil, 0, false, 0, 0}
 	return agent
 }
 
