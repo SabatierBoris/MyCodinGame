@@ -138,6 +138,7 @@ type Agent struct {
 	pos          Point
 	paths        chan *Path
 	current_path *Path
+	reload       int
 }
 
 func (a *Agent) Run(terminated *sync.WaitGroup) {
@@ -189,6 +190,9 @@ func (a *Agent) Run(terminated *sync.WaitGroup) {
 				}
 			}
 			a.order <- fmt.Sprintf("MOVE %s %d", p, a.Id)
+			if a.reload > 0 {
+				a.reload--
+			}
 		}
 	}
 }
@@ -217,7 +221,7 @@ func (a *Agent) PrepareOrder() {
 }
 
 func MakeAgent(index, teamId, teamSize, nbGhost int, paths chan *Path) *Agent {
-	agent := &Agent{index + (teamSize * teamId), teamId, make(chan bool), make(chan string), make(chan InputLine), make(chan bool), make(chan bool), Point{0, 0}, paths, nil}
+	agent := &Agent{index + (teamSize * teamId), teamId, make(chan bool), make(chan string), make(chan InputLine), make(chan bool), make(chan bool), Point{0, 0}, paths, nil, 0}
 	return agent
 }
 
