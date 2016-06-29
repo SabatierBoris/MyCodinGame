@@ -4,23 +4,27 @@ import (
 	"fmt"
 	"math"
 	"os"
+	"sort"
 	"sync"
 )
 
 const (
-	NbTurn      = 200
-	XShift      = 700
-	YShift      = 700
-	Xsize       = 16000
-	Ysize       = 9000
-	ReleaseDist = 1600
-	StunDist    = 1760
-	BustMaxDist = 1760
-	BustMinDist = 900
-	GhostSpeed  = 400
-	BusterSpeed = 800
-	NbPaths     = 6
-	NbShift     = 3
+	NbTurn       = 200
+	XShift       = 700
+	YShift       = 700
+	Xsize        = 16000
+	Ysize        = 9000
+	ReleaseDist  = 1600
+	StunDist     = 1760
+	BustMaxDist  = 1760
+	BustMinDist  = 900
+	GhostSpeed   = 400
+	BusterSpeed  = 800
+	NbPaths      = 6
+	NbShift      = 3
+	FogDistance  = 2200
+	WeakGhost    = 5
+	AverageGhost = 15
 )
 
 //=============================================================================
@@ -124,6 +128,56 @@ func (ps *Paths) Pop() *Path {
 }
 
 //=============================================================================
+//= Ghost =====================================================================
+//=============================================================================
+type Ghost struct {
+	Id    int
+	Pos   Point
+	State int
+	Value int
+}
+
+//TODO
+
+//=============================================================================
+//= Ghosts ====================================================================
+//=============================================================================
+
+type Ghosts struct {
+	List   []*Ghost
+	Target Point
+}
+
+func (slice Ghosts) Len() int {
+	return len(slice.List)
+}
+
+func (slice Ghosts) String() string {
+	ret := fmt.Sprintf("Target : %s\n", slice.Target)
+	for _, ghost := range slice.List {
+		ret = fmt.Sprintf("%s : %s\n", ret, ghost)
+	}
+	return ret
+}
+
+func (slice Ghosts) Less(i, j int) bool {
+	return slice.List[i].Pos.GetDistanceTo(slice.Target) < slice.List[j].Pos.GetDistanceTo(slice.Target)
+}
+
+func (slice Ghosts) Swap(i, j int) {
+	slice.List[i], slice.List[j] = slice.List[j], slice.List[i]
+}
+
+//=============================================================================
+//= Opponent ==================================================================
+//=============================================================================
+type Opponent struct {
+	pos Point
+}
+
+//TODO
+
+//=============================================================================
 //= AGENT =====================================================================
 //=============================================================================
 
@@ -142,6 +196,9 @@ type Agent struct {
 	orderSet     bool
 	state        int
 	value        int
+	datas        []InputLine
+	ghosts       []Ghost
+	opponents    []Opponent
 }
 
 func (a *Agent) Run(terminated *sync.WaitGroup) {
@@ -159,9 +216,9 @@ func (a *Agent) Run(terminated *sync.WaitGroup) {
 				a.state = data.State
 				a.value = data.Value
 				break
+			} else {
+				a.datas = append(a.datas, data)
 			}
-			//fmt.Fprintf(os.Stderr, "Agent %d received : %s\n", a.Id, data)
-			//TODO
 		case <-a.endDigest:
 			fmt.Fprintf(os.Stderr, "Agent %d End of digest\n", a.Id)
 			//If I'm STUNED
@@ -170,6 +227,73 @@ func (a *Agent) Run(terminated *sync.WaitGroup) {
 				a.orderSet = true
 				break
 			}
+			// Analyse datas
+			if a.orderSet == false {
+				for _, data := range a.datas {
+					if data.EntityType == -1 {
+						//Ghost
+						p := Point{data.X, data.Y}
+						if p.GetDistanceTo(a.pos) <= FogDistance {
+							fmt.Fprintf(os.Stderr, "Ghost near %d\n", a.Id)
+							a.ghosts = append(a.ghosts, Ghost{data.EntityId, p, data.State, data.Value})
+						}
+					} else if data.EntityType != a.teamId {
+						//Opponent
+						//TODO
+					} else {
+						//Friend
+						//TODO
+					}
+				}
+			}
+
+			if a.orderSet == false {
+				//If I can shoot and enemy is near and enemy isn't stun
+				//TODO
+			}
+
+			if a.orderSet == false {
+				if a.state == 1 {
+					//If I have a ghost
+					a.GoHomeAndRelease()
+					break
+				}
+			}
+
+			if a.orderSet == false {
+				// Get nearest ghost order by distance
+				sortedGhosts := Ghosts{make([]*Ghost, len(a.ghosts)), a.pos}
+				for index, _ := range a.ghosts {
+					sortedGhosts.List[index] = &a.ghosts[index]
+				}
+				sort.Sort(sortedGhosts)
+				for _, ghost := range sortedGhosts.List {
+					if ghost.State <= WeakGhost {
+						//Weak ghost
+						a.AttackGhost(*ghost)
+						break
+						//Only one member if no opponent
+						//TODO
+						//If opponent => Ask help LEVEL 0 (Urgent)
+						//TODO
+					} else if ghost.State <= AverageGhost {
+						//Average ghost two member if no opponent
+						//TODO
+						//If opponent => Ask help LEVEL 1
+						//TODO
+					} else {
+						//Strong ghost, only when no other ghost found during sometime
+						// => Ask help for stun LEVEL 3 (Not urgent)
+						//TODO
+						//If opponent => Ask help LEVEL 2
+						//TODO
+					}
+				}
+			}
+			//TODO => Move forward ghost
+			//TODO => Attack ghost if live <= 15
+			//TODO => Ask help if enemy near
+
 			//TODO PREPARE ORDER FOR ATTACK (STUN or BUST)
 			//TODO ASK HELP
 			//TODO Tell I can HELP
@@ -208,7 +332,42 @@ func (a *Agent) Run(terminated *sync.WaitGroup) {
 			if a.reload > 0 {
 				a.reload--
 			}
+			a.datas = []InputLine{}
+			a.ghosts = []Ghost{}
+			a.opponents = []Opponent{}
 		}
+	}
+}
+
+func (a *Agent) GoHomeAndRelease() {
+	dist := a.pos.GetDistanceTo(Bases[a.teamId])
+	//fmt.Fprintf(os.Stderr, "%d have a ghost (Distance to %s : %f - %t)\n", i, t.Base, dist, (dist > ReleaseDist))
+	if dist > ReleaseDist {
+		a.order <- fmt.Sprintf("MOVE %s", Bases[a.teamId])
+		a.orderSet = true
+	} else {
+		a.order <- fmt.Sprintf("RELEASE")
+		a.orderSet = true
+	}
+}
+
+func (a *Agent) AttackGhost(g Ghost) {
+	dist := a.pos.GetDistanceTo(g.Pos)
+	//fmt.Fprintf(os.Stderr, "%d target %s (dist:%f)\n", buster.Id, ghost, dist)
+	if dist > BustMaxDist {
+		a.order <- fmt.Sprintf("MOVE %s", g.Pos)
+		a.orderSet = true
+	} else if dist < BustMinDist {
+		//Move out
+		targetPos := g.Pos
+		if dist+GhostSpeed < BustMinDist {
+			targetPos = a.pos.GetPositionAwaysFrom(g.Pos, BustMinDist-(dist+GhostSpeed))
+		}
+		a.order <- fmt.Sprintf("MOVE %s", targetPos)
+		a.orderSet = true
+	} else {
+		a.order <- fmt.Sprintf("BUST %d", g.Id)
+		a.orderSet = true
 	}
 }
 
@@ -236,7 +395,7 @@ func (a *Agent) PrepareOrder() {
 }
 
 func MakeAgent(index, teamId, teamSize, nbGhost int, paths chan *Path) *Agent {
-	agent := &Agent{index + (teamSize * teamId), teamId, make(chan bool), make(chan string, 1), make(chan InputLine), make(chan bool), make(chan bool), Point{0, 0}, paths, nil, 0, false, 0, 0}
+	agent := &Agent{index + (teamSize * teamId), teamId, make(chan bool), make(chan string, 1), make(chan InputLine), make(chan bool), make(chan bool), Point{0, 0}, paths, nil, 0, false, 0, 0, []InputLine{}, []Ghost{}, []Opponent{}}
 	return agent
 }
 
@@ -270,7 +429,7 @@ func main() {
 				//TODO TRY p.Push(&Point{XShift + (i * ((Xsize - (2 * XShift)) / (NbPaths - 1))), Ysize - (YShift + (i * ((Ysize - (2 * YShift)) / (NbPaths - 1))))})
 				p.Push(&Point{Xsize - (4 * XShift), Ysize - (4 * YShift)})
 			}
-			fmt.Fprintf(os.Stderr, "%d - Path : %s\n", myTeamId, p)
+			//fmt.Fprintf(os.Stderr, "%d - Path : %s\n", myTeamId, p)
 			paths <- p
 		}
 	}
