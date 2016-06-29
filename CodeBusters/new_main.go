@@ -24,6 +24,22 @@ const (
 )
 
 //=============================================================================
+//= INPUT LINE ================================================================
+//=============================================================================
+type InputLine struct {
+	EntityId   int
+	X          int
+	Y          int
+	EntityType int
+	State      int
+	Value      int
+}
+
+func (i InputLine) String() string {
+	return fmt.Sprintf("Id:%d X:%d Y:%d Type:%d State:%d Value:%d", i.EntityId, i.X, i.Y, i.EntityType, i.State, i.Value)
+}
+
+//=============================================================================
 //= POINT =====================================================================
 //=============================================================================
 type Point struct {
@@ -116,7 +132,7 @@ type Agent struct {
 	teamId       int
 	quit         chan bool
 	order        chan string
-	data         chan bool //TODO Change data chan type
+	data         chan InputLine
 	endDigest    chan bool
 	prepareOrder chan bool
 	pos          Point
@@ -134,6 +150,10 @@ func (a *Agent) Run(terminated *sync.WaitGroup) {
 			fmt.Fprintf(os.Stderr, "Agent %d terminated\n", a.Id)
 			return
 		case data := <-a.data:
+			if data.EntityType == a.teamId && data.EntityId == a.Id {
+				a.pos.X, a.pos.Y = data.X, data.Y
+				break
+			}
 			fmt.Fprintf(os.Stderr, "Agent %d received : %s\n", a.Id, data)
 			//TODO
 		case <-a.endDigest:
@@ -184,8 +204,8 @@ func (a *Agent) GetOrder() string {
 }
 
 func (a *Agent) DigestData(entityId, x, y, entityType, state, value int) {
-	//TODO Do something
-	a.data <- true
+	input := InputLine{entityId, x, y, entityType, state, value}
+	a.data <- input
 }
 
 func (a *Agent) EndDigestData() {
@@ -197,7 +217,7 @@ func (a *Agent) PrepareOrder() {
 }
 
 func MakeAgent(index, teamId, teamSize, nbGhost int, paths chan *Path) *Agent {
-	agent := &Agent{index + (teamSize * teamId), teamId, make(chan bool), make(chan string), make(chan bool), make(chan bool), make(chan bool), Point{0, 0}, paths, nil}
+	agent := &Agent{index + (teamSize * teamId), teamId, make(chan bool), make(chan string), make(chan InputLine), make(chan bool), make(chan bool), Point{0, 0}, paths, nil}
 	return agent
 }
 
@@ -224,9 +244,11 @@ func main() {
 			p.Push(&Point{XShift + (i * ((Xsize - (2 * XShift)) / (NbPaths - 1))), Ysize - (YShift + (i * ((Ysize - (2 * YShift)) / (NbPaths - 1))))})
 			if myTeamId == 0 {
 				p.Push(&Point{Xsize - (4 * XShift), Ysize - (4 * YShift)})
+				//TODO TRY p.Push(&Point{XShift + (i * ((Xsize - (2 * XShift)) / (NbPaths - 1))), Ysize - (YShift + (i * ((Ysize - (2 * YShift)) / (NbPaths - 1))))})
 				p.Push(&Point{2 * XShift, 2 * YShift})
 			} else {
 				p.Push(&Point{2 * XShift, 2 * YShift})
+				//TODO TRY p.Push(&Point{XShift + (i * ((Xsize - (2 * XShift)) / (NbPaths - 1))), Ysize - (YShift + (i * ((Ysize - (2 * YShift)) / (NbPaths - 1))))})
 				p.Push(&Point{Xsize - (4 * XShift), Ysize - (4 * YShift)})
 			}
 			fmt.Fprintf(os.Stderr, "%d - Path : %s\n", myTeamId, p)
@@ -246,12 +268,12 @@ func main() {
 		var entities int
 		fmt.Scan(&entities)
 		for i := 0; i < entities; i++ {
+			var entityId, x, y, entityType, state, value int
 			// entityId: buster id or ghost id
 			// y: position of this buster / ghost
 			// entityType: the team id if it is a buster, -1 if it is a ghost.
 			// state: For busters: 0=idle, 1=carrying a ghost.
 			// value: For busters: Ghost id being carried. For ghosts: number of busters attempting to trap this ghost.
-			var entityId, x, y, entityType, state, value int
 			fmt.Scan(&entityId, &x, &y, &entityType, &state, &value)
 			for j := 0; j < bustersPerPlayer; j++ {
 				agents[j].DigestData(entityId, x, y, entityType, state, value)
