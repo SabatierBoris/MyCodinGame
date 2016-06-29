@@ -8,19 +8,19 @@ import (
 )
 
 const (
-	NbTurn       = 200
-	XShift       = 700
-	YShift       = 700
-	Xsize        = 16000
-	Ysize        = 9000
-	ReleaseDist  = 1600
-	StunDist     = 1760
-	BustMaxDist  = 1760
-	BustMinDist  = 900
-	GhostSpeed   = 400
-	BusterSpeed  = 800
-	NbCheckpoint = 6
-	NbShift      = 3
+	NbTurn      = 200
+	XShift      = 700
+	YShift      = 700
+	Xsize       = 16000
+	Ysize       = 9000
+	ReleaseDist = 1600
+	StunDist    = 1760
+	BustMaxDist = 1760
+	BustMinDist = 900
+	GhostSpeed  = 400
+	BusterSpeed = 800
+	NbPaths     = 6
+	NbShift     = 3
 )
 
 //=============================================================================
@@ -86,6 +86,11 @@ func (p Path) String() string {
 //=============================================================================
 //= PATHS =====================================================================
 //=============================================================================
+
+func PathsService(in chan<- *Path, out <-chan *Path) {
+
+}
+
 type Paths struct {
 	list []*Path
 }
@@ -114,6 +119,9 @@ type Agent struct {
 	data         chan bool //TODO Change data chan type
 	endDigest    chan bool
 	prepareOrder chan bool
+	pos          Point
+	paths        chan *Path
+	current_path *Path
 }
 
 func (a *Agent) Run(terminated *sync.WaitGroup) {
@@ -138,11 +146,29 @@ func (a *Agent) Run(terminated *sync.WaitGroup) {
 			//TODO If I don't have order already
 			//TODO Help someone
 			//TODO Move somewhere if no one need help
-			if a.teamId == 0 {
-				a.order <- fmt.Sprintf("MOVE %s %d", Bases[1], a.Id)
-			} else {
-				a.order <- fmt.Sprintf("MOVE %s %d", Bases[0], a.Id)
+
+			//Don't have order yet, use paths
+			var p *Point
+			p = nil
+			for p == nil {
+				if a.current_path == nil {
+					fmt.Fprintf(os.Stderr, "Agent %d get a new path\n", a.Id)
+					a.current_path = <-a.paths
+					a.current_path.Reset()
+					fmt.Fprintf(os.Stderr, "Agent %d path %s\n", a.Id, a.current_path)
+				}
+				p = a.current_path.GetCurrentPoint()
+				if p == nil {
+					a.current_path.Reset()
+					a.paths <- a.current_path
+					a.current_path = nil
+				}
+				if p != nil && p.GetDistanceTo(a.pos) < 100 {
+					a.current_path.Next()
+					p = nil
+				}
 			}
+			a.order <- fmt.Sprintf("MOVE %s %d", p, a.Id)
 		}
 	}
 }
@@ -170,8 +196,8 @@ func (a *Agent) PrepareOrder() {
 	a.prepareOrder <- true
 }
 
-func MakeAgent(index, teamId, teamSize, nbGhost int) *Agent {
-	agent := &Agent{index + (teamSize * teamId), teamId, make(chan bool), make(chan string), make(chan bool), make(chan bool), make(chan bool)}
+func MakeAgent(index, teamId, teamSize, nbGhost int, paths chan *Path) *Agent {
+	agent := &Agent{index + (teamSize * teamId), teamId, make(chan bool), make(chan string), make(chan bool), make(chan bool), make(chan bool), Point{0, 0}, paths, nil}
 	return agent
 }
 
@@ -190,9 +216,27 @@ func main() {
 	fmt.Scan(&ghostCount)
 	fmt.Scan(&myTeamId)
 
+	paths := make(chan *Path, NbPaths)
+
+	for j := 0; j < NbShift; j++ {
+		for i := j; i < NbPaths; i += NbShift {
+			p := &Path{0, make([]*Point, 0)}
+			p.Push(&Point{XShift + (i * ((Xsize - (2 * XShift)) / (NbPaths - 1))), Ysize - (YShift + (i * ((Ysize - (2 * YShift)) / (NbPaths - 1))))})
+			if myTeamId == 0 {
+				p.Push(&Point{Xsize - (4 * XShift), Ysize - (4 * YShift)})
+				p.Push(&Point{2 * XShift, 2 * YShift})
+			} else {
+				p.Push(&Point{2 * XShift, 2 * YShift})
+				p.Push(&Point{Xsize - (4 * XShift), Ysize - (4 * YShift)})
+			}
+			fmt.Fprintf(os.Stderr, "%d - Path : %s\n", myTeamId, p)
+			paths <- p
+		}
+	}
+
 	terminated.Add(bustersPerPlayer)
 	for i := 0; i < bustersPerPlayer; i++ {
-		agent := MakeAgent(i, myTeamId, bustersPerPlayer, ghostCount)
+		agent := MakeAgent(i, myTeamId, bustersPerPlayer, ghostCount, paths)
 		go agent.Run(&terminated)
 		agents = append(agents, agent)
 	}
