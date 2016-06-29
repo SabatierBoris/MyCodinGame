@@ -139,6 +139,7 @@ type Agent struct {
 	paths        chan *Path
 	currentPath  *Path
 	reload       int
+	orderSet     bool
 }
 
 func (a *Agent) Run(terminated *sync.WaitGroup) {
@@ -169,27 +170,32 @@ func (a *Agent) Run(terminated *sync.WaitGroup) {
 			//TODO Move somewhere if no one need help
 
 			//Don't have order yet, use paths
-			var p *Point
-			p = nil
-			for p == nil {
-				if a.currentPath == nil {
-					fmt.Fprintf(os.Stderr, "Agent %d get a new path\n", a.Id)
-					a.currentPath = <-a.paths
-					a.currentPath.Reset()
-					fmt.Fprintf(os.Stderr, "Agent %d path %s\n", a.Id, a.currentPath)
+			if a.orderSet == false {
+				var p *Point
+				p = nil
+				for p == nil {
+					if a.currentPath == nil {
+						fmt.Fprintf(os.Stderr, "Agent %d get a new path\n", a.Id)
+						a.currentPath = <-a.paths
+						a.currentPath.Reset()
+						fmt.Fprintf(os.Stderr, "Agent %d path %s\n", a.Id, a.currentPath)
+					}
+					p = a.currentPath.GetCurrentPoint()
+					if p == nil {
+						a.currentPath.Reset()
+						a.paths <- a.currentPath
+						a.currentPath = nil
+					}
+					if p != nil && p.GetDistanceTo(a.pos) < 100 {
+						a.currentPath.Next()
+						p = nil
+					}
 				}
-				p = a.currentPath.GetCurrentPoint()
-				if p == nil {
-					a.currentPath.Reset()
-					a.paths <- a.currentPath
-					a.currentPath = nil
-				}
-				if p != nil && p.GetDistanceTo(a.pos) < 100 {
-					a.currentPath.Next()
-					p = nil
-				}
+				a.order <- fmt.Sprintf("MOVE %s %d", p, a.Id)
+				a.orderSet = true
 			}
-			a.order <- fmt.Sprintf("MOVE %s %d", p, a.Id)
+
+			a.orderSet = false
 			if a.reload > 0 {
 				a.reload--
 			}
@@ -221,7 +227,7 @@ func (a *Agent) PrepareOrder() {
 }
 
 func MakeAgent(index, teamId, teamSize, nbGhost int, paths chan *Path) *Agent {
-	agent := &Agent{index + (teamSize * teamId), teamId, make(chan bool), make(chan string), make(chan InputLine), make(chan bool), make(chan bool), Point{0, 0}, paths, nil, 0}
+	agent := &Agent{index + (teamSize * teamId), teamId, make(chan bool), make(chan string), make(chan InputLine), make(chan bool), make(chan bool), Point{0, 0}, paths, nil, 0, false}
 	return agent
 }
 
