@@ -9,29 +9,120 @@ import (
 )
 
 const (
-	NbTurn       = 200
-	XShift       = 300
-	YShift       = 300
-	Xsize        = 16000
-	Ysize        = 9000
-	ReleaseDist  = 1600
-	StunDist     = 1760
-	BustMaxDist  = 1760
-	BustMinDist  = 900
-	GhostSpeed   = 400
-	BusterSpeed  = 800
-	NbPaths      = 6
-	NbShift      = 3
-	FogDistance  = 2200
-	WeakGhost    = 5
-	AverageGhost = 15
+	NbTurn          = 200
+	XShift          = 300
+	YShift          = 300
+	Xsize           = 16000
+	Ysize           = 9000
+	ReleaseDist     = 1600
+	StunDist        = 1760
+	BustMaxDist     = 1760
+	BustMinDist     = 900
+	GhostSpeed      = 400
+	BusterSpeed     = 800
+	NbPaths         = 6
+	NbShift         = 3
+	FogDistance     = 2200
+	WeakGhost       = 5
+	AverageGhost    = 15
+	NbTurnHighGhost = 30
 )
 
 const (
+	_                = iota
 	HighHelpLevel    = iota
 	AverageHelpLevel = iota
 	LowHelpLevel     = iota
+	UselessHelpLevel = iota
 )
+
+//=============================================================================
+//= HELP REQUEST ==============================================================
+//=============================================================================
+type HelpRequest struct {
+	Pos          Point
+	Level        int
+	Count        int
+	RequestCount int
+}
+
+func (h *HelpRequest) IncreaseCounter() {
+	h.Count++
+}
+
+func (h HelpRequest) String() string {
+	return fmt.Sprintf("Pos:%s Level:%d Count:%d", h.Pos, h.Level, h.Count)
+}
+
+func (h HelpRequest) GetScore(target *Point) float64 {
+	return h.Pos.GetDistanceTo(*target) * (float64)(h.Level+h.Count)
+}
+
+func (h HelpRequest) IsAnwsered() bool {
+	return h.Count >= h.RequestCount
+}
+
+//=============================================================================
+//= SHARE HELP REQUESTS =======================================================
+//=============================================================================
+type ShareHelpRequests struct {
+	mut      *sync.Mutex
+	requests []*HelpRequest
+}
+
+func (s *ShareHelpRequests) AddRequest(pos Point, level int, nb int) {
+	s.mut.Lock()
+	defer s.mut.Unlock()
+	for index, _ := range s.requests {
+		if s.requests[index].Pos.X == pos.X && s.requests[index].Pos.Y == pos.Y {
+			//If the request is already ask, decrease urgence level
+			s.requests[index].IncreaseCounter()
+			return
+		}
+	}
+	s.requests = append(s.requests, &HelpRequest{pos, level, 0, nb})
+}
+
+func (s *ShareHelpRequests) Reset() {
+	fmt.Fprintf(os.Stderr, "HelpList : %s\n", s)
+	s.mut.Lock()
+	defer s.mut.Unlock()
+	s.requests = []*HelpRequest{}
+}
+
+func (s *ShareHelpRequests) String() string {
+	s.mut.Lock()
+	defer s.mut.Unlock()
+	ret := ""
+	for _, request := range s.requests {
+		ret = fmt.Sprintf("%s - %s", ret, request)
+	}
+	return ret
+}
+
+func (s *ShareHelpRequests) AnwserToHelp(current *Point) *Point {
+	s.mut.Lock()
+	defer s.mut.Unlock()
+
+	var request *HelpRequest
+	request = nil
+	var request_score float64
+
+	for index, _ := range s.requests {
+		current_score := s.requests[index].GetScore(current)
+		if !s.requests[index].IsAnwsered() {
+			if request == nil || current_score < request_score {
+				request = s.requests[index]
+				request_score = current_score
+			}
+		}
+	}
+	if request != nil {
+		request.IncreaseCounter()
+		return &request.Pos
+	}
+	return nil
+}
 
 //=============================================================================
 //= ORDER =====================================================================
@@ -39,6 +130,10 @@ const (
 type Order struct {
 	Id    int
 	Count int
+}
+
+func (o Order) String() string {
+	return fmt.Sprintf("Id:%d Count:%d", o.Id, o.Count)
 }
 
 //=============================================================================
@@ -79,9 +174,20 @@ func (s *ShareOrders) GetOrderCount(order int) int {
 }
 
 func (s *ShareOrders) Reset() {
+	fmt.Fprintf(os.Stderr, "OrdersList : %s\n", s)
 	s.mut.Lock()
 	defer s.mut.Unlock()
 	s.orders = []*Order{}
+}
+
+func (s *ShareOrders) String() string {
+	s.mut.Lock()
+	defer s.mut.Unlock()
+	ret := ""
+	for _, order := range s.orders {
+		ret = fmt.Sprintf("%s - %s", ret, order)
+	}
+	return ret
 }
 
 //=============================================================================
@@ -287,6 +393,7 @@ type Agent struct {
 	lastBust     int
 	bustOrders   *ShareOrders
 	stunOrders   *ShareOrders
+	helpList     *ShareHelpRequests
 }
 
 func (a *Agent) Run(terminated *sync.WaitGroup) {
@@ -308,13 +415,7 @@ func (a *Agent) Run(terminated *sync.WaitGroup) {
 				a.datas = append(a.datas, data)
 			}
 		case <-a.endDigest:
-			fmt.Fprintf(os.Stderr, "Agent %d End of digest\n", a.Id)
-			//If I'm STUNED
-			if a.state == 2 {
-				a.order <- fmt.Sprintf("MOVE %s STUNED", a.pos)
-				a.orderSet = true
-				break
-			}
+			//fmt.Fprintf(os.Stderr, "Agent %d End of digest\n", a.Id)
 			// Analyse datas
 			if a.orderSet == false {
 				for _, data := range a.datas {
@@ -322,20 +423,65 @@ func (a *Agent) Run(terminated *sync.WaitGroup) {
 						//Ghost
 						p := Point{data.X, data.Y}
 						if p.GetDistanceTo(a.pos) <= FogDistance {
-							fmt.Fprintf(os.Stderr, "Ghost near %d\n", a.Id)
+							//fmt.Fprintf(os.Stderr, "Ghost near %d\n", a.Id)
 							a.ghosts = append(a.ghosts, Ghost{data.EntityId, p, data.State, data.Value})
 						}
 					} else if data.EntityType != a.teamId {
 						//Opponent
 						p := Point{data.X, data.Y}
 						if p.GetDistanceTo(a.pos) <= FogDistance {
-							fmt.Fprintf(os.Stderr, "Opponent near %d\n", a.Id)
+							//fmt.Fprintf(os.Stderr, "Opponent near %d\n", a.Id)
 							a.opponents = append(a.opponents, Opponent{data.EntityId, p, data.State, data.Value})
 						}
 					} else {
 						//Friend
 						//TODO
 					}
+				}
+			}
+
+			//If I'm STUNED
+			if a.state == 2 {
+				a.order <- fmt.Sprintf("MOVE %s Zzzzzz", a.pos)
+				a.orderSet = true
+				nb := 0
+				level := AverageHelpLevel
+				for _, opponent := range a.opponents {
+					if opponent.State != 2 {
+						level = HighHelpLevel
+					}
+					if opponent.State != 2 || opponent.Value <= 2 {
+						nb++
+					}
+				}
+				if nb > 0 {
+					a.AskHelp(a.pos, level, nb)
+				}
+				break
+			}
+
+			if a.orderSet == false && a.reload == 0 {
+				//If I can shoot and enemy is near and enemy isn't stun
+				sortedOpponents := Opponents{[]*Opponent{}, a.pos}
+				for index, _ := range a.opponents {
+					if a.pos.GetDistanceTo(a.opponents[index].Pos) <= StunDist {
+						sortedOpponents.List = append(sortedOpponents.List, &a.opponents[index])
+					}
+				}
+				sort.Sort(sortedOpponents)
+				for _, opponent := range sortedOpponents.List {
+					if opponent.State != 2 || opponent.Value <= 2 {
+						a.AttackOpponent(*opponent)
+						break
+					}
+				}
+			}
+
+			if a.orderSet == false {
+				if a.state == 1 {
+					//If I have a ghost
+					a.GoHomeAndRelease()
+					break
 				}
 			}
 
@@ -355,14 +501,6 @@ func (a *Agent) Run(terminated *sync.WaitGroup) {
 			}
 
 			if a.orderSet == false {
-				if a.state == 1 {
-					//If I have a ghost
-					a.GoHomeAndRelease()
-					break
-				}
-			}
-
-			if a.orderSet == false {
 				// Get nearest ghost order by distance
 				sortedGhosts := Ghosts{make([]*Ghost, len(a.ghosts)), a.pos}
 				for index, _ := range a.ghosts {
@@ -376,22 +514,22 @@ func (a *Agent) Run(terminated *sync.WaitGroup) {
 							a.lastBust = 0
 						}
 						if ghost.Value > 1 {
-							a.AskHelp(ghost.Pos, HighHelpLevel)
+							a.AskHelp(ghost.Pos, HighHelpLevel, ghost.Value)
 						}
 						break
 					} else if ghost.State <= AverageGhost {
 						if a.AttackGhost(*ghost, 2) {
 							a.lastBust = 0
 						}
-						a.AskHelp(ghost.Pos, AverageHelpLevel)
+						a.AskHelp(ghost.Pos, AverageHelpLevel, 1)
 						break
 					} else {
-						if a.lastBust > 30 { //TODO Parametrable
+						if a.lastBust > NbTurnHighGhost {
 							a.AttackGhost(*ghost, 3)
 							if ghost.Value > 1 {
-								a.AskHelp(ghost.Pos, AverageHelpLevel)
+								a.AskHelp(ghost.Pos, AverageHelpLevel, 3)
 							} else {
-								a.AskHelp(ghost.Pos, LowHelpLevel)
+								a.AskHelp(ghost.Pos, LowHelpLevel, 3)
 							}
 							break
 						}
@@ -400,8 +538,11 @@ func (a *Agent) Run(terminated *sync.WaitGroup) {
 			}
 		case <-a.prepareOrder:
 			if a.orderSet == false {
-				//Don't have order yet, Help someone
-				//TODO
+				if pos := a.helpList.AnwserToHelp(&a.pos); pos != nil {
+					a.order <- fmt.Sprintf("MOVE %s support", pos)
+					a.orderSet = true
+					a.lastBust = NbTurnHighGhost
+				}
 			}
 			if a.orderSet == false {
 				//Don't have order yet, use paths
@@ -425,7 +566,7 @@ func (a *Agent) Run(terminated *sync.WaitGroup) {
 						p = nil
 					}
 				}
-				a.order <- fmt.Sprintf("MOVE %s %d", p, a.Id)
+				a.order <- fmt.Sprintf("MOVE %s help?", p)
 				a.orderSet = true
 			}
 
@@ -441,16 +582,16 @@ func (a *Agent) Run(terminated *sync.WaitGroup) {
 	}
 }
 
-func (a *Agent) AskHelp(pos Point, level int) {
-	fmt.Fprintf(os.Stderr, "Agent %d need help at %s (%d)\n", a.Id, pos, level)
-	//TODO
+func (a *Agent) AskHelp(pos Point, level int, nb int) {
+	fmt.Fprintf(os.Stderr, "Agent %d need %d help at %s (%d)\n", a.Id, nb, pos, level)
+	a.helpList.AddRequest(pos, level, nb)
 }
 
 func (a *Agent) GoHomeAndRelease() {
 	dist := a.pos.GetDistanceTo(Bases[a.teamId])
 	//fmt.Fprintf(os.Stderr, "%d have a ghost (Distance to %s : %f - %t)\n", i, t.Base, dist, (dist > ReleaseDist))
 	if dist > ReleaseDist {
-		a.order <- fmt.Sprintf("MOVE %s", Bases[a.teamId])
+		a.order <- fmt.Sprintf("MOVE %s home", Bases[a.teamId])
 		a.orderSet = true
 	} else {
 		a.order <- fmt.Sprintf("RELEASE")
@@ -462,7 +603,7 @@ func (a *Agent) AttackOpponent(o Opponent) bool {
 	if a.stunOrders.GetOrderCount(o.Id) == 0 {
 		dist := a.pos.GetDistanceTo(o.Pos)
 		if dist > StunDist {
-			a.order <- fmt.Sprintf("MOVE %s", o.Pos)
+			a.order <- fmt.Sprintf("MOVE %s fight", o.Pos)
 			a.orderSet = true
 		} else {
 			if a.stunOrders.MakeOrder(o.Id, 1) {
@@ -481,7 +622,7 @@ func (a *Agent) AttackGhost(g Ghost, limit int) bool {
 		dist := a.pos.GetDistanceTo(g.Pos)
 		//fmt.Fprintf(os.Stderr, "%d target %s (dist:%f)\n", buster.Id, ghost, dist)
 		if dist > BustMaxDist {
-			a.order <- fmt.Sprintf("MOVE %s", g.Pos)
+			a.order <- fmt.Sprintf("MOVE %s attack", g.Pos)
 			a.orderSet = true
 		} else if dist < BustMinDist {
 			//Move out
@@ -489,7 +630,7 @@ func (a *Agent) AttackGhost(g Ghost, limit int) bool {
 			if dist+GhostSpeed < BustMinDist {
 				targetPos = a.pos.GetPositionAwaysFrom(g.Pos, BustMinDist-(dist+GhostSpeed))
 			}
-			a.order <- fmt.Sprintf("MOVE %s", targetPos)
+			a.order <- fmt.Sprintf("MOVE %s getout", targetPos)
 			a.orderSet = true
 		} else {
 			if a.bustOrders.MakeOrder(g.Id, limit) {
@@ -525,8 +666,8 @@ func (a *Agent) PrepareOrder() {
 	a.prepareOrder <- true
 }
 
-func MakeAgent(index, teamId, teamSize, nbGhost int, paths chan *Path, bustOrders *ShareOrders, stunOrders *ShareOrders) *Agent {
-	agent := &Agent{index + (teamSize * teamId), teamId, make(chan bool), make(chan string, 1), make(chan InputLine), make(chan bool), make(chan bool), Point{0, 0}, paths, nil, 0, false, 0, 0, []InputLine{}, []Ghost{}, []Opponent{}, 0, bustOrders, stunOrders}
+func MakeAgent(index, teamId, teamSize, nbGhost int, paths chan *Path, bustOrders *ShareOrders, stunOrders *ShareOrders, helpList *ShareHelpRequests) *Agent {
+	agent := &Agent{index + (teamSize * teamId), teamId, make(chan bool), make(chan string, 1), make(chan InputLine), make(chan bool), make(chan bool), Point{0, 0}, paths, nil, 0, false, 0, 0, []InputLine{}, []Ghost{}, []Opponent{}, 0, bustOrders, stunOrders, helpList}
 	return agent
 }
 
@@ -567,10 +708,11 @@ func main() {
 
 	bustOrders := &ShareOrders{&sync.Mutex{}, []*Order{}}
 	stunOrders := &ShareOrders{&sync.Mutex{}, []*Order{}}
+	helpList := &ShareHelpRequests{&sync.Mutex{}, []*HelpRequest{}}
 
 	terminated.Add(bustersPerPlayer)
 	for i := 0; i < bustersPerPlayer; i++ {
-		agent := MakeAgent(i, myTeamId, bustersPerPlayer, ghostCount, paths, bustOrders, stunOrders)
+		agent := MakeAgent(i, myTeamId, bustersPerPlayer, ghostCount, paths, bustOrders, stunOrders, helpList)
 		go agent.Run(&terminated)
 		agents = append(agents, agent)
 	}
@@ -602,6 +744,7 @@ func main() {
 		}
 		bustOrders.Reset()
 		stunOrders.Reset()
+		helpList.Reset()
 	}
 
 	for i := 0; i < bustersPerPlayer; i++ {
