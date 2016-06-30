@@ -28,6 +28,51 @@ const (
 )
 
 //=============================================================================
+//= ORDER =====================================================================
+//=============================================================================
+type Order struct {
+	Id    int
+	Count int
+}
+
+//=============================================================================
+//= SHARE ORDERS ==============================================================
+//=============================================================================
+type ShareOrders struct {
+	mut    sync.Mutex
+	orders []*Order
+}
+
+func (s *ShareOrders) MakeOrder(order int, limit int) bool {
+	s.mut.Lock()
+	defer s.mut.Unlock()
+	for index, _ := range s.orders {
+		if s.orders[index].Id == order {
+			if s.orders[index].Count < limit {
+				s.orders[index].Count++
+				return true
+			} else {
+				return false
+			}
+		}
+	}
+	newOrder := &Order{order, 1}
+	s.orders = append(s.orders, newOrder)
+	return true
+}
+
+func (s *ShareOrders) GetOrderCount(order int) int {
+	s.mut.Lock()
+	defer s.mut.Unlock()
+	for index, _ := range s.orders {
+		if s.orders[index].Id == order {
+			return s.orders[index].Count
+		}
+	}
+	return 0
+}
+
+//=============================================================================
 //= INPUT LINE ================================================================
 //=============================================================================
 type InputLine struct {
