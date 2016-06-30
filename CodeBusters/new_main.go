@@ -10,8 +10,8 @@ import (
 
 const (
 	NbTurn       = 200
-	XShift       = 700
-	YShift       = 700
+	XShift       = 300
+	YShift       = 300
 	Xsize        = 16000
 	Ysize        = 9000
 	ReleaseDist  = 1600
@@ -25,6 +25,12 @@ const (
 	FogDistance  = 2200
 	WeakGhost    = 5
 	AverageGhost = 15
+)
+
+const (
+	HighHelpLevel    = iota
+	AverageHelpLevel = iota
+	LowHelpLevel     = iota
 )
 
 //=============================================================================
@@ -227,8 +233,6 @@ type Opponent struct {
 	Value int
 }
 
-//TODO
-
 //=============================================================================
 //= Opponents =================================================================
 //=============================================================================
@@ -371,40 +375,29 @@ func (a *Agent) Run(terminated *sync.WaitGroup) {
 						if a.AttackGhost(*ghost, 1) {
 							a.lastBust = 0
 						}
+						if ghost.Value > 1 {
+							a.AskHelp(ghost.Pos, HighHelpLevel)
+						}
 						break
-						//Only one member if no opponent
-						//TODO
-						//If opponent => Ask help LEVEL 0 (Urgent)
-						//TODO
 					} else if ghost.State <= AverageGhost {
 						if a.AttackGhost(*ghost, 2) {
 							a.lastBust = 0
 						}
+						a.AskHelp(ghost.Pos, AverageHelpLevel)
 						break
-						//Average ghost two member if no opponent
-						//TODO
-						//If opponent => Ask help LEVEL 1
-						//TODO
 					} else {
 						if a.lastBust > 30 { //TODO Parametrable
 							a.AttackGhost(*ghost, 3)
+							if ghost.Value > 1 {
+								a.AskHelp(ghost.Pos, AverageHelpLevel)
+							} else {
+								a.AskHelp(ghost.Pos, LowHelpLevel)
+							}
 							break
 						}
-						//Strong ghost, only when no other ghost found during sometime
-						// => Ask help for stun LEVEL 3 (Not urgent)
-						//TODO
-						//If opponent => Ask help LEVEL 2
-						//TODO
 					}
 				}
 			}
-			//TODO => Move forward ghost
-			//TODO => Attack ghost if live <= 15
-			//TODO => Ask help if enemy near
-
-			//TODO PREPARE ORDER FOR ATTACK (STUN or BUST)
-			//TODO ASK HELP
-			//TODO Tell I can HELP
 		case <-a.prepareOrder:
 			if a.orderSet == false {
 				//Don't have order yet, Help someone
@@ -427,7 +420,7 @@ func (a *Agent) Run(terminated *sync.WaitGroup) {
 						a.paths <- a.currentPath
 						a.currentPath = nil
 					}
-					if p != nil && p.GetDistanceTo(a.pos) < 100 {
+					if p != nil && p.GetDistanceTo(a.pos) < BusterSpeed {
 						a.currentPath.Next()
 						p = nil
 					}
@@ -446,6 +439,11 @@ func (a *Agent) Run(terminated *sync.WaitGroup) {
 			a.lastBust++
 		}
 	}
+}
+
+func (a *Agent) AskHelp(pos Point, level int) {
+	fmt.Fprintf(os.Stderr, "Agent %d need help at %s (%d)\n", a.Id, pos, level)
+	//TODO
 }
 
 func (a *Agent) GoHomeAndRelease() {
@@ -487,7 +485,7 @@ func (a *Agent) AttackGhost(g Ghost, limit int) bool {
 			a.orderSet = true
 		} else if dist < BustMinDist {
 			//Move out
-			targetPos := g.Pos
+			targetPos := a.pos
 			if dist+GhostSpeed < BustMinDist {
 				targetPos = a.pos.GetPositionAwaysFrom(g.Pos, BustMinDist-(dist+GhostSpeed))
 			}
