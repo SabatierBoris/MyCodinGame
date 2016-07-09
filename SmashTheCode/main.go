@@ -17,31 +17,31 @@ type Dot struct {
 	Right *Dot
 }
 
-func (d *Dot)SetUp(up *Dot){
+func (d *Dot) SetUp(up *Dot) {
 	d.Up = up
 	if up.Down != d {
 		up.SetDown(d)
 	}
 }
 
-func (d *Dot)SetDown(down *Dot){
+func (d *Dot) SetDown(down *Dot) {
 	d.Down = down
 	if down.Up != d {
-		up.SetUp(d)
+		down.SetUp(d)
 	}
 }
 
-func (d *Dot)SetLeft(left *Dot){
+func (d *Dot) SetLeft(left *Dot) {
 	d.Left = left
 	if left.Right != d {
-		up.SetRight(d)
+		left.SetRight(d)
 	}
 }
 
-func (d *Dot)SetRight(right *Dot){
+func (d *Dot) SetRight(right *Dot) {
 	d.Right = right
 	if right.Left != d {
-		up.SetLeft(d)
+		right.SetLeft(d)
 	}
 }
 
@@ -49,14 +49,13 @@ type BoardGrid struct {
 	columns []Dot
 }
 
-func NewBoardGrid(size_x int size_y int) (*BoardGrid){
+func NewBoardGrid(size_x int, size_y int) *BoardGrid {
 	var tops []Dot
 	tops = make([]Dot, size_x, size_x)
-	tops = Dot[size_x];
-	s = &BoardGrid(
+	return nil
 }
 
-func (b *BoardGrid)initialize()
+func (b *BoardGrid) initialize()
 
 func main() {
 	for {

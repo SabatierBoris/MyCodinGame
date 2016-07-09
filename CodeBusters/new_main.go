@@ -37,6 +37,37 @@ const (
 )
 
 //=============================================================================
+//= SHARE HELPER ==============================================================
+//=============================================================================
+type ShareHelper struct {
+	mut     *sync.Mutex
+	helpers []*Agent
+}
+
+func (s *ShareHelper) AddHelper(helper *Agent) {
+	s.mut.Lock()
+	defer s.mut.Unlock()
+	s.helpers = append(s.helpers, helper)
+}
+
+func (s *ShareHelper) Reset() {
+	fmt.Fprintf(os.Stderr, "HelperList : %s\n", s)
+	s.mut.Lock()
+	defer s.mut.Unlock()
+	s.helpers = []*Agent{}
+}
+
+func (s *ShareHelper) String() string {
+	s.mut.Lock()
+	defer s.mut.Unlock()
+	ret := ""
+	for _, helper := range s.helpers {
+		ret = fmt.Sprintf("%s - %s", ret, helper)
+	}
+	return ret
+}
+
+//=============================================================================
 //= HELP REQUEST ==============================================================
 //=============================================================================
 type HelpRequest struct {
@@ -394,6 +425,7 @@ type Agent struct {
 	bustOrders   *ShareOrders
 	stunOrders   *ShareOrders
 	helpList     *ShareHelpRequests
+	helperList   *ShareHelper
 }
 
 func (a *Agent) Run(terminated *sync.WaitGroup) {
@@ -513,7 +545,7 @@ func (a *Agent) Run(terminated *sync.WaitGroup) {
 						if a.AttackGhost(*ghost, 1) {
 							a.lastBust = 0
 						}
-						if ghost.Value > 1 {
+						if ghost.State == 0 && ghost.Value > 1 {
 							a.AskHelp(ghost.Pos, HighHelpLevel, ghost.Value)
 						}
 						break
@@ -536,8 +568,12 @@ func (a *Agent) Run(terminated *sync.WaitGroup) {
 					}
 				}
 			}
+			if a.orderSet == false {
+				a.ICanHelp()
+			}
 		case <-a.prepareOrder:
 			if a.orderSet == false {
+				//TODO I'm the best to answer to this help ?
 				if pos := a.helpList.AnwserToHelp(&a.pos); pos != nil {
 					a.order <- fmt.Sprintf("MOVE %s support", pos)
 					a.orderSet = true
@@ -582,6 +618,10 @@ func (a *Agent) Run(terminated *sync.WaitGroup) {
 	}
 }
 
+func (a *Agent) ICanHelp() {
+	a.helperList.AddHelper(a)
+}
+
 func (a *Agent) AskHelp(pos Point, level int, nb int) {
 	fmt.Fprintf(os.Stderr, "Agent %d need %d help at %s (%d)\n", a.Id, nb, pos, level)
 	a.helpList.AddRequest(pos, level, nb)
@@ -623,6 +663,7 @@ func (a *Agent) AttackGhost(g Ghost, limit int) bool {
 		//fmt.Fprintf(os.Stderr, "%d target %s (dist:%f)\n", buster.Id, ghost, dist)
 		if dist > BustMaxDist {
 			a.order <- fmt.Sprintf("MOVE %s attack", g.Pos)
+			//TODO Only if no one esle
 			a.orderSet = true
 		} else if dist < BustMinDist {
 			//Move out
@@ -631,6 +672,7 @@ func (a *Agent) AttackGhost(g Ghost, limit int) bool {
 				targetPos = a.pos.GetPositionAwaysFrom(g.Pos, BustMinDist-(dist+GhostSpeed))
 			}
 			a.order <- fmt.Sprintf("MOVE %s getout", targetPos)
+			//TODO Only if no one esle
 			a.orderSet = true
 		} else {
 			if a.bustOrders.MakeOrder(g.Id, limit) {
@@ -666,8 +708,8 @@ func (a *Agent) PrepareOrder() {
 	a.prepareOrder <- true
 }
 
-func MakeAgent(index, teamId, teamSize, nbGhost int, paths chan *Path, bustOrders *ShareOrders, stunOrders *ShareOrders, helpList *ShareHelpRequests) *Agent {
-	agent := &Agent{index + (teamSize * teamId), teamId, make(chan bool), make(chan string, 1), make(chan InputLine), make(chan bool), make(chan bool), Point{0, 0}, paths, nil, 0, false, 0, 0, []InputLine{}, []Ghost{}, []Opponent{}, 0, bustOrders, stunOrders, helpList}
+func MakeAgent(index, teamId, teamSize, nbGhost int, paths chan *Path, bustOrders *ShareOrders, stunOrders *ShareOrders, helpList *ShareHelpRequests, helperList *ShareHelper) *Agent {
+	agent := &Agent{index + (teamSize * teamId), teamId, make(chan bool), make(chan string, 1), make(chan InputLine), make(chan bool), make(chan bool), Point{0, 0}, paths, nil, 0, false, 0, 0, []InputLine{}, []Ghost{}, []Opponent{}, 0, bustOrders, stunOrders, helpList, helperList}
 	return agent
 }
 
@@ -694,11 +736,11 @@ func main() {
 			p.Push(&Point{XShift + (i * ((Xsize - (2 * XShift)) / (NbPaths - 1))), Ysize - (YShift + (i * ((Ysize - (2 * YShift)) / (NbPaths - 1))))})
 			if myTeamId == 0 {
 				p.Push(&Point{Xsize - (4 * XShift), Ysize - (4 * YShift)})
-				//TODO TRY p.Push(&Point{XShift + (i * ((Xsize - (2 * XShift)) / (NbPaths - 1))), Ysize - (YShift + (i * ((Ysize - (2 * YShift)) / (NbPaths - 1))))})
+				p.Push(&Point{XShift + (i * ((Xsize - (2 * XShift)) / (NbPaths - 1))), Ysize - (YShift + (i * ((Ysize - (2 * YShift)) / (NbPaths - 1))))})
 				p.Push(&Point{2 * XShift, 2 * YShift})
 			} else {
 				p.Push(&Point{2 * XShift, 2 * YShift})
-				//TODO TRY p.Push(&Point{XShift + (i * ((Xsize - (2 * XShift)) / (NbPaths - 1))), Ysize - (YShift + (i * ((Ysize - (2 * YShift)) / (NbPaths - 1))))})
+				p.Push(&Point{XShift + (i * ((Xsize - (2 * XShift)) / (NbPaths - 1))), Ysize - (YShift + (i * ((Ysize - (2 * YShift)) / (NbPaths - 1))))})
 				p.Push(&Point{Xsize - (4 * XShift), Ysize - (4 * YShift)})
 			}
 			//fmt.Fprintf(os.Stderr, "%d - Path : %s\n", myTeamId, p)
@@ -709,10 +751,11 @@ func main() {
 	bustOrders := &ShareOrders{&sync.Mutex{}, []*Order{}}
 	stunOrders := &ShareOrders{&sync.Mutex{}, []*Order{}}
 	helpList := &ShareHelpRequests{&sync.Mutex{}, []*HelpRequest{}}
+	helperList := &ShareHelper{&sync.Mutex{}, []*Agent{}}
 
 	terminated.Add(bustersPerPlayer)
 	for i := 0; i < bustersPerPlayer; i++ {
-		agent := MakeAgent(i, myTeamId, bustersPerPlayer, ghostCount, paths, bustOrders, stunOrders, helpList)
+		agent := MakeAgent(i, myTeamId, bustersPerPlayer, ghostCount, paths, bustOrders, stunOrders, helpList, helperList)
 		go agent.Run(&terminated)
 		agents = append(agents, agent)
 	}
@@ -745,6 +788,7 @@ func main() {
 		bustOrders.Reset()
 		stunOrders.Reset()
 		helpList.Reset()
+		helperList.Reset()
 	}
 
 	for i := 0; i < bustersPerPlayer; i++ {

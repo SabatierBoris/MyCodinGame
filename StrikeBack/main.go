@@ -35,6 +35,11 @@ type Pod struct {
 	previousPosition *Point
 }
 
+type (p *Pod) SetCurrentPosition(x int, y int){
+	p.previousPosition = p.currentPosition
+	p.currentPosotion = &Point{x,y}
+}
+
 func (p *Pod) GetCurrentSpeed() (sX int, sY int) {
 	sX = 0
 	sY = 0
@@ -74,6 +79,7 @@ func (j *Journey) IsComplet() bool {
 
 func main() {
 	journey := Journey{nil, nil, false}
+	pod := Pod{nil, nil}
 	for {
 		var speed string
 		// nextCheckpointX: x position of the next check point
@@ -82,8 +88,13 @@ func main() {
 		// nextCheckpointAngle: angle between your pod orientation and the direction of the next checkpoint
 		var x, y, nextCheckpointX, nextCheckpointY, nextCheckpointDist, nextCheckpointAngle int
 		fmt.Scan(&x, &y, &nextCheckpointX, &nextCheckpointY, &nextCheckpointDist, &nextCheckpointAngle)
+
+		pod.SetCurrentPosition(x,y)
+		fmt.Fprintf(os.Stderr, "Current position is :%d-%d with %d-%d speed\n", nextCheckpoint.X, nextCheckpoint.Y)
+
 		nextCheckpoint := journey.GetCurrentTarget(nextCheckpointX, nextCheckpointY)
 		fmt.Fprintf(os.Stderr, "Current checkpoint is :%d-%d\n", nextCheckpoint.X, nextCheckpoint.Y)
+
 		var opponentX, opponentY int
 		fmt.Scan(&opponentX, &opponentY)
 
